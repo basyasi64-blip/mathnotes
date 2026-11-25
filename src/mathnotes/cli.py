@@ -41,3 +41,7 @@ def main(argv=None) -> int:
     finally:
         s.close()
     return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
