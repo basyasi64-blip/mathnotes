@@ -14,7 +14,7 @@
         </Grid.ColumnDefinitions>
 
         <TextBlock Grid.Row="0" Grid.Column="0" Text="Original (Handschrift)" FontWeight="SemiBold" />
-        <TextBlock Grid.Row="0" Grid.Column="1" Text="LaTeX (bearbeitbar)" FontWeight="SemiBold" />
+        <TextBlock Grid.Row="0" Grid.Column="1" Text="Gesetzte Formel und LaTeX (bearbeitbar)" FontWeight="SemiBold" />
 
         <Border Grid.Row="1" Grid.Column="0" BorderBrush="Gray" BorderThickness="1">
             <Canvas x:Name="InkSurface" Background="White"
@@ -24,12 +24,16 @@
 
         <Grid Grid.Row="1" Grid.Column="1" RowSpacing="8">
             <Grid.RowDefinitions>
+                <RowDefinition Height="2*" />
                 <RowDefinition Height="*" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
-            <TextBox x:Name="LatexBox" AcceptsReturn="True" TextWrapping="Wrap"
+            <Border BorderBrush="Gray" BorderThickness="1">
+                <WebView2 x:Name="Preview" />
+            </Border>
+            <TextBox x:Name="LatexBox" Grid.Row="1" AcceptsReturn="True" TextWrapping="Wrap"
                      FontFamily="Consolas" PlaceholderText="LaTeX hier eingeben, z. B. \frac{a}{b}" />
-            <Button Grid.Row="1" Content="Korrektur speichern" Click="OnSaveFormula" />
+            <Button Grid.Row="2" Content="Korrektur speichern" Click="OnSaveFormula" />
         </Grid>
 
         <TextBlock x:Name="StatusText" Grid.Row="2" Grid.ColumnSpan="2" Opacity="0.7" />

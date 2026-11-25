@@ -1,0 +1,19 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<link rel="stylesheet" href="katex/katex.min.css">
+<script src="katex/katex.min.js"></script>
+<style>
+  body { font-family: "Segoe UI", sans-serif; margin: 16px; font-size: 1.3em; }
+  .hint { opacity: .5; font-size: .6em; }
+  .err { color: #b00020; font-size: .6em; font-family: Consolas, monospace; white-space: pre-wrap; }
+</style></head>
+<body><div id="out"></div>
+<script>
+function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
+function render(tex){
+  var o = document.getElementById('out');
+  if(!tex || !tex.trim()){ o.innerHTML = '<span class="hint">Vorschau erscheint hier</span>'; return; }
+  try { katex.render(tex, o, {displayMode:true, throwOnError:true}); }
+  catch(e){ o.innerHTML = '<div class="err">LaTeX-Fehler: ' + esc(e.message) + '</div>'; }
+}
+</script></body></html>

@@ -19,6 +19,9 @@
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.1742" />
   </ItemGroup>
   <ItemGroup>
+    <Content Include="Assets\preview\**\*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\MathNotes.Core\MathNotes.Core.csproj" />
   </ItemGroup>
 </Project>

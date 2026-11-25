@@ -9,10 +9,10 @@
 | LaTeX-/PDF-Export | Vollstaendig implementiert und getestet (pdflatex, Linux) |
 | Erkenner-Schnittstelle | Implementiert und getestet; **kein echtes Modell** (NullRecognizer) |
 | Handschrifterkennung Mathematik | Noch nicht implementiert |
-| WinUI-3-Oberflaeche (Strich-Canvas mit Druck, Original links, LaTeX-Feld rechts, Sofort-Speichern) | Implementiert, **noch nie kompiliert oder ausgefuehrt** (kein Windows hier) |
-| C#-Speicherschicht (gleiches SQLite-Schema) + xUnit-Tests | Implementiert, **Tests noch nie gelaufen** (kein .NET hier) |
+| WinUI-3-Oberflaeche (Strich-Canvas mit Druck, Original links, LaTeX-Feld rechts, Sofort-Speichern) | CI-Build gruen; vom Nutzer manuell geprueft: Start, Stiftschreiben, Speichern-Button |
+| C#-Speicherschicht (gleiches SQLite-Schema) + xUnit-Tests | Implementiert; xUnit-Tests laufen in der CI |
 | Stiftspezifisch: Neigung, Palm Rejection, Radierer, Lasso, Farben | Noch nicht implementiert |
-| Gerenderte Formelvorschau (KaTeX/WebView2) | Noch nicht implementiert |
+| Gerenderte Formelvorschau (KaTeX 0.16.11 offline in WebView2) | Implementiert; KaTeX-Rendering per node getestet, WebView2-Anbindung noch ungetestet |
 | Windows-Installer, Portable Version | Noch nicht implementiert |
 | Windows-CI (Python-Tests, C#-Tests, App-Publish als portable Version) | Vorbereitet, **noch nie gelaufen** |
 | Verschluesselung, Auto-Backup, Wissensnetz, Simulation u. a. | Noch nicht implementiert |
