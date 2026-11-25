@@ -1,7 +1,7 @@
 name: CI
-on: [push, pull_request]
+on: [push, pull_request, workflow_dispatch]
 jobs:
-  core-tests:
+  python-core:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest]
@@ -18,4 +18,18 @@ jobs:
         run: choco install miktex -y --no-progress
       - run: pip install pytest && pip install -e .
       - run: pytest -q
-  # Geplant: windows-latest-Job fuer WinUI-3-Build (dotnet build), sobald das C#-Projekt existiert.
+
+  windows-app:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with: { dotnet-version: "8.0.x" }
+      - name: Core-Tests (C#)
+        run: dotnet test windows/MathNotes.Core.Tests -c Release
+      - name: WinUI-App veroeffentlichen (portable, self-contained, x64)
+        run: dotnet publish windows/MathNotes.App/MathNotes.App.csproj -c Release -r win-x64 -p:Platform=x64 -o publish
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MathNotes-win-x64-portable
+          path: publish

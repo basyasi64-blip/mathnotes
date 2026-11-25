@@ -16,3 +16,14 @@ wird nie ueberschrieben; jede Aenderung landet in `formula_versions`.
 
 Entscheidungen: SQLite statt Dateiformat-Eigenbau (robust, atomar); pdflatex jetzt, Tectonic spaeter
 fuer die Windows-Auslieferung zu pruefen; Erkenner-Modell (z. B. pix2tex/ONNX) ist noch nicht integriert.
+
+## Korrektur v0.2: Stifteingabe
+WinUI 3 besitzt keinen `InkCanvas` (der ist UWP-only). v0.2 erfasst Striche deshalb direkt ueber
+Pointer-Ereignisse (`PointerPoint.Properties.Pressure`) und zeichnet sie als `Polyline`.
+Neigung, Palm Rejection, Radierer, Lasso und niedrige Latenz (Win2D/Direct2D) folgen spaeter.
+
+## Windows-Schicht (windows/)
+- `MathNotes.Core` (net8.0): `NotebookStore` mit demselben SQLite-Schema wie der Python-Kern.
+- `MathNotes.Core.Tests` (xUnit): Roundtrip, Unveraenderlichkeit, Verlauf.
+- `MathNotes.App` (WinUI 3, unpackaged, self-contained): Oberflaeche; speichert jeden Strich sofort.
+Die App haengt in v0.2 nicht von Python ab. Der PDF-Export laeuft vorerst ueber den Python-Kern (CLI).
