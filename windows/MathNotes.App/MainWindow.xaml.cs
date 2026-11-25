@@ -22,7 +22,7 @@ public sealed partial class MainWindow : Window
     {
         InitializeComponent();
         Title = "MathNotes";
-        var dbPath = Path.Combine(
+        var dbPath = System.IO.Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MathNotes", "notebook.db");
         _store = new NotebookStore(dbPath);
         var nb = _store.FirstNotebook() ?? _store.CreateNotebook("Mein Notizbuch");
