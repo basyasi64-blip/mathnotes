@@ -13,9 +13,6 @@ jobs:
       - name: TeX Live (Linux)
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y texlive-latex-base texlive-latex-recommended texlive-fonts-recommended
-      - name: MiKTeX (Windows)
-        if: runner.os == 'Windows'
-        run: choco install miktex -y --no-progress
       - run: pip install pytest && pip install -e .
       - run: pytest -q
 

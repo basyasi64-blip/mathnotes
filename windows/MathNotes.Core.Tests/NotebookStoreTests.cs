@@ -44,6 +44,16 @@ public class NotebookStoreTests
     }
 
     [Fact]
+    public void ZweiterStart_FindetBestehendesNotizbuch()
+    {
+        var path = TempDb();
+        long nb;
+        using (var s = new NotebookStore(path)) nb = s.CreateNotebook("A");
+        using var s2 = new NotebookStore(path);
+        Assert.Equal(nb, s2.FirstNotebook());
+    }
+
+    [Fact]
     public void Formelkorrektur_FuehrtVerlauf()
     {
         using var s = new NotebookStore(TempDb());

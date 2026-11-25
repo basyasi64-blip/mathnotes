@@ -1,3 +1,4 @@
+import shutil
 import sqlite3
 import pytest
 from mathnotes.storage import Store
@@ -69,6 +70,10 @@ def test_latex_escaping():
     assert export.escape_text("a_b & 50%") == r"a\_b \& 50\%"
 
 
+needs_tex = pytest.mark.skipif(shutil.which('pdflatex') is None, reason='pdflatex nicht installiert')
+
+
+@needs_tex
 def test_export_pdf_echt(store, tmp_path):
     nb = store.create_notebook("Titel_mit_Unterstrich"); page = store.pages(nb)[0]
     fid = store.add_formula(page, [], RecognitionResult("e", "1", (Candidate(r"\int_0^1 x^2\,dx=\frac13", 0.9),)))
@@ -80,6 +85,7 @@ def test_export_pdf_echt(store, tmp_path):
     assert (tmp_path / "o.pdf").read_bytes()[:4] == b"%PDF"
 
 
+@needs_tex
 def test_ungueltiges_latex_meldet_fehler(store, tmp_path):
     nb = store.create_notebook("T"); page = store.pages(nb)[0]
     store.add_formula(page, [], RecognitionResult("e", "1", (Candidate(r"\frac{", 0.5),)))

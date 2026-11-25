@@ -64,7 +64,9 @@ CREATE TRIGGER IF NOT EXISTS strokes_no_delete BEFORE DELETE ON strokes
         c.CommandText = sql;
         foreach (var (k, v) in args) c.Parameters.AddWithValue(k, v ?? DBNull.Value);
         var r = c.ExecuteScalar();
-        return r is null or DBNull ? default : (T)Convert.ChangeType(r, typeof(T));
+        if (r is null or DBNull) return default;
+        var target = Nullable.GetUnderlyingType(typeof(T)) ?? typeof(T);
+        return (T)Convert.ChangeType(r, target);
     }
 
     public long CreateNotebook(string title)
