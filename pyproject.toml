@@ -1,0 +1,23 @@
+[project]
+name = "mathnotes"
+version = "0.1.0"
+description = "Lokales, offline-faehiges wissenschaftliches Notizbuch (Kern: Speicherung, Erkennungs-Schnittstelle, LaTeX-Export)"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[project.scripts]
+mathnotes = "mathnotes.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
