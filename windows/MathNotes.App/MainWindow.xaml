@@ -46,6 +46,8 @@
                 </StackPanel>
                 <TextBox x:Name="SuggestionBox" Header="Erkennungsvorschlag (ungeprueft)" IsReadOnly="True"
                          TextWrapping="Wrap" FontFamily="Consolas" MinHeight="48" />
+                <ComboBox x:Name="CandidateBox" Header="Weitere Vorschl&#228;ge" Visibility="Collapsed"
+                          HorizontalAlignment="Stretch" SelectionChanged="OnCandidateChanged" />
                 <Button x:Name="AcceptButton" Content="Vorschlag uebernehmen" Click="OnAcceptSuggestion" IsEnabled="False" />
             </StackPanel>
             <Button Grid.Row="3" Content="Korrektur speichern" Click="OnSaveFormula" />

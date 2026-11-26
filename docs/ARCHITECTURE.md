@@ -38,3 +38,11 @@ Striche werden als JSON uebergeben und in Python (Pillow) zu einem Bild geraster
 - pix2tex liefert keinen Konfidenzwert (`confidence` = NULL). Es ist auf gedruckte Formeln trainiert; Handschrift-Genauigkeit offen.
 - Fehler/Absturz/Zeitueberschreitung des Erkenners werden als Fehlermeldung gezeigt und blockieren die App nicht.
 - Modell wird pro Aufruf geladen (Wartezeit von Sekunden); ein dauerhafter Dienst waere eine spaetere Optimierung.
+
+## Korrektur v0.6: Erkenner
+Praxistest: pix2tex erkennt Handschrift nicht (f(x) -> nabla(s)). Standard ist jetzt TexTeller 3 (`pip install texteller`,
+laut Projekt fuer Handschrift trainiert; Modell ca. 1,2 GB von huggingface.co). `recognize.py --engine pix2tex` bleibt waehlbar.
+Dieselben Striche werden in zwei Darstellungen (duenn/dick, supersampled) erkannt; unterschiedliche Ergebnisse erscheinen als Kandidatenliste.
+Das Eingabebild liegt in `%LOCALAPPDATA%\MathNotes\last_recognition.png` zur Fehlersuche.
+Falls auch TexTeller bei Handschrift scheitert, waeren naechste Optionen: Strich-basierte Erkenner (nutzen Zeitverlauf) oder ein
+freiwillig zuschaltbarer Online-Dienst mit ausdruecklicher Zustimmung (widerspricht dem Offline-Standard).

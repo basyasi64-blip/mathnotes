@@ -13,7 +13,7 @@ public sealed record RecognitionOutcome(
 }
 
 /// <summary>
-/// Ruft das lokale Python-Skript recognizer/recognize.py (pix2tex) als eigenen Prozess auf.
+/// Ruft das lokale Python-Skript recognizer/recognize.py (TexTeller bzw. pix2tex) als eigenen Prozess auf.
 /// Ein Fehler oder Absturz des Erkenners blockiert die App nie: er wird als Fehler-Ergebnis gemeldet.
 /// </summary>
 public sealed class Pix2TexClient
@@ -30,6 +30,11 @@ public sealed class Pix2TexClient
     public static string DefaultPythonPath() => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "MathNotes", "recognizer", "venv", "Scripts", "python.exe");
+
+    /// <summary>Das Bild, das der Erkenner zuletzt bekommen hat (zur Fehlersuche).</summary>
+    public static string DebugImagePath() => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "MathNotes", "last_recognition.png");
 
     public bool IsInstalled => File.Exists(_python) && File.Exists(_script);
 
@@ -54,6 +59,8 @@ public sealed class Pix2TexClient
             };
             psi.ArgumentList.Add(_script);
             psi.ArgumentList.Add(tmp);
+            psi.ArgumentList.Add("--debug-image");
+            psi.ArgumentList.Add(DebugImagePath());
             psi.Environment["PYTHONIOENCODING"] = "utf-8";
 
             using var proc = Process.Start(psi)
@@ -106,7 +113,7 @@ public sealed class Pix2TexClient
                     c["confidence"] is JsonNode cf ? cf.GetValue<double>() : (double?)null))
                 .ToList();
             return new RecognitionOutcome(
-                o["engine"]?.GetValue<string>() ?? "pix2tex",
+                o["engine"]?.GetValue<string>() ?? "unbekannt",
                 o["engine_version"]?.GetValue<string>() ?? "?",
                 cands, null);
         }
@@ -117,7 +124,7 @@ public sealed class Pix2TexClient
     }
 
     private static RecognitionOutcome Fail(string msg) =>
-        new("pix2tex", "?", Array.Empty<RecognitionCandidate>(), msg);
+        new("unbekannt", "?", Array.Empty<RecognitionCandidate>(), msg);
 
     private static string Tail(string s, int n) => s.Length <= n ? s : s[^n..];
 }

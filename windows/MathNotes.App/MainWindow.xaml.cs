@@ -21,6 +21,7 @@ public sealed partial class MainWindow : Window
     private long _startTicks;
     private bool _previewReady;
     private bool _erasing;
+    private bool _updatingCandidates;
     private HashSet<long>? _pendingErase;
     private readonly Stack<(char Kind, long Id)> _undo = new();   // 'D' = Strich gezeichnet, 'E' = Radiergruppe
     private const double EraseRadius = 14;
@@ -224,15 +225,28 @@ public sealed partial class MainWindow : Window
                 return;
             }
             _store.SaveRecognition(_page, strokes.Select(s => s.Id).ToList(), result);
+            _updatingCandidates = true;
+            CandidateBox.Items.Clear();
+            foreach (var c in result.Candidates) CandidateBox.Items.Add(c.Latex);
+            CandidateBox.SelectedIndex = 0;
+            CandidateBox.Visibility = result.Candidates.Count > 1 ? Visibility.Visible : Visibility.Collapsed;
+            _updatingCandidates = false;
             SuggestionBox.Text = result.Candidates[0].Latex;
             AcceptButton.IsEnabled = true;
             StatusText.Text = $"Vorschlag von {result.Engine} {result.EngineVersion} (ungeprueft, ohne Konfidenzwert). " +
-                              "Bitte pruefen, uebernehmen oder korrigieren. Deine Striche bleiben unveraendert.";
+                              "Bitte pruefen, uebernehmen oder korrigieren. Deine Striche bleiben unveraendert. " +
+                              $"Eingabebild des Erkenners: {Pix2TexClient.DebugImagePath()}";
         }
         finally
         {
             RecognizeButton.IsEnabled = true;
         }
+    }
+
+    private void OnCandidateChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_updatingCandidates || CandidateBox.SelectedItem is not string latex) return;
+        SuggestionBox.Text = latex;
     }
 
     private void OnAcceptSuggestion(object sender, RoutedEventArgs e)
@@ -247,10 +261,10 @@ public sealed partial class MainWindow : Window
         {
             XamlRoot = Content.XamlRoot,
             Title = "Erkennung einrichten",
-            Content = "Es wird eine lokale Python-Umgebung angelegt und pix2tex installiert.\n\n" +
-                      "Downloads (einmalig, einige hundert MB bis GB):\n" +
-                      "- Python-Pakete von pypi.org (u. a. PyTorch)\n" +
-                      "- Modellgewichte von github.com\n\n" +
+            Content = "Es wird eine lokale Python-Umgebung angelegt und die Erkennung TexTeller installiert (auch fuer Handschrift).\n\n" +
+                      "Downloads (einmalig, zusammen einige GB):\n" +
+                      "- Python-Pakete von pypi.org (u. a. PyTorch, TexTeller)\n" +
+                      "- Modellgewichte (ca. 1,2 GB) von huggingface.co\n\n" +
                       "Es werden keine Notizen oder Striche uebertragen. Die Erkennung selbst laeuft offline.",
             PrimaryButtonText = "Einrichten",
             CloseButtonText = "Abbrechen",

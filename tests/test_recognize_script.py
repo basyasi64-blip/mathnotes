@@ -52,3 +52,23 @@ def test_fehlendes_modell_meldet_klaren_fehler(tmp_path):
     code, stdout, _ = _run(f)
     assert code == 2
     assert "pix2tex" in json.loads(stdout)["error"] or "fehlt" in json.loads(stdout)["error"]
+
+
+def test_zwei_darstellungen_unterscheiden_sich(tmp_path):
+    spec = importlib.util.spec_from_file_location("recognize_mod", SCRIPT)
+    mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
+    strokes = [{"c": "#000", "w": 2, "p": [[0, 0, .5, 0], [40, 80, .5, 5], [80, 0, .5, 9]]}]
+    a = mod.rasterize(strokes, *mod.VARIANTS[0])
+    b = mod.rasterize(strokes, *mod.VARIANTS[1])
+    assert a.size != b.size and len(mod.VARIANTS) == 2
+    assert mod.unique_nonempty([" a ", "a", "", "b", "b "]) == ["a", "b"]
+
+
+def test_debug_bild_wird_geschrieben_und_fehler_bleibt_sauber(tmp_path):
+    if importlib.util.find_spec("texteller") is not None:
+        pytest.skip("texteller ist installiert")
+    f = _strokes_file(tmp_path, [{"c": "#000", "w": 2, "p": [[0, 0, .5, 0], [30, 40, .5, 3]]}])
+    dbg = tmp_path / "sub" / "d.png"
+    code, stdout, _ = _run(f, "--debug-image", dbg)
+    assert code == 2 and "texteller" in json.loads(stdout)["error"]
+    assert dbg.exists()          # das Eingabebild wurde trotzdem zur Fehlersuche gespeichert
