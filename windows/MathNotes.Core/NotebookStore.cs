@@ -86,10 +86,7 @@ CREATE TRIGGER IF NOT EXISTS strokes_no_delete BEFORE DELETE ON strokes
 
     public long AddStroke(long pageId, StrokeData s)
     {
-        var pts = new JsonArray();
-        foreach (var p in s.Points)
-            pts.Add(new JsonArray(p.X, p.Y, p.Pressure, p.TimeMs));
-        var json = new JsonObject { ["c"] = s.Color, ["w"] = s.Width, ["p"] = pts }.ToJsonString();
+        var json = StrokeJson.Encode(s);
         Exec("INSERT INTO strokes(page_id,data) VALUES($p,$d)", ("$p", pageId), ("$d", json));
         return Scalar<long>("SELECT last_insert_rowid()");
     }
@@ -103,17 +100,42 @@ CREATE TRIGGER IF NOT EXISTS strokes_no_delete BEFORE DELETE ON strokes
         using var r = c.ExecuteReader();
         while (r.Read())
         {
-            var o = JsonNode.Parse(r.GetString(1))!.AsObject();
-            var pts = o["p"]!.AsArray().Select(a =>
-            {
-                var x = a!.AsArray();
-                return new PointData(x[0]!.GetValue<double>(), x[1]!.GetValue<double>(),
-                                     x[2]!.GetValue<double>(), x[3]!.GetValue<long>());
-            }).ToList();
-            res.Add((r.GetInt64(0), new StrokeData(o["c"]!.GetValue<string>(), o["w"]!.GetValue<double>(), pts)));
+            res.Add((r.GetInt64(0), StrokeJson.Decode(r.GetString(1))));
         }
         return res;
     }
+
+    /// <summary>Speichert einen Erkenner-Vorschlag. Eine vorhandene Nutzerkorrektur bleibt unveraendert.</summary>
+    public long SaveRecognition(long pageId, IReadOnlyList<long> strokeIds, RecognitionOutcome r)
+    {
+        if (!r.Recognized) throw new InvalidOperationException("Nichts erkannt");
+        var best = r.Candidates[0];
+        var alts = new JsonArray();
+        foreach (var c in r.Candidates.Skip(1))
+            alts.Add(new JsonObject { ["latex"] = c.Latex, ["confidence"] = c.Confidence });
+        var ids = "[" + string.Join(",", strokeIds) + "]";
+        var engine = $"{r.Engine}@{r.EngineVersion}";
+        using var tx = _db.BeginTransaction();
+        var fid = Scalar<long?>("SELECT id FROM formulas WHERE page_id=$p ORDER BY id LIMIT 1", ("$p", pageId));
+        if (fid is null)
+        {
+            Exec("INSERT INTO formulas(page_id,stroke_ids,recognized_latex,confidence,alternatives,engine) VALUES($p,$s,$l,$c,$a,$e)",
+                 ("$p", pageId), ("$s", ids), ("$l", best.Latex), ("$c", best.Confidence), ("$a", alts.ToJsonString()), ("$e", engine));
+            fid = Scalar<long>("SELECT last_insert_rowid()");
+        }
+        else
+        {
+            Exec("UPDATE formulas SET stroke_ids=$s, recognized_latex=$l, confidence=$c, alternatives=$a, engine=$e WHERE id=$f",
+                 ("$s", ids), ("$l", best.Latex), ("$c", best.Confidence), ("$a", alts.ToJsonString()), ("$e", engine), ("$f", fid));
+        }
+        Exec("INSERT INTO formula_versions(formula_id,latex,source) VALUES($f,$l,$src)",
+             ("$f", fid), ("$l", best.Latex), ("$src", "recognizer:" + r.Engine));
+        tx.Commit();
+        return fid.Value;
+    }
+
+    public string? RecognizedFormula(long pageId) =>
+        Scalar<string?>("SELECT recognized_latex FROM formulas WHERE page_id=$p ORDER BY id LIMIT 1", ("$p", pageId));
 
     /// <summary>Nutzerkorrektur der Formel; erzeugt die Formel beim ersten Speichern, Verlauf bleibt erhalten.</summary>
     public long SaveEditedFormula(long pageId, string latex)

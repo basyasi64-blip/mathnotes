@@ -63,4 +63,28 @@ public class NotebookStoreTests
         Assert.Equal("b", s.EditedFormula(page));
         Assert.Equal(2, s.FormulaVersionCount(page));
     }
+
+    [Fact]
+    public void Erkennung_UeberschreibtKeineNutzerkorrektur()
+    {
+        using var s = new NotebookStore(TempDb());
+        var page = s.FirstPage(s.CreateNotebook("x"));
+        var id = s.AddStroke(page, Sample());
+        s.SaveEditedFormula(page, "meine Korrektur");
+        var r = new RecognitionOutcome("pix2tex", "0.1.4",
+            new[] { new RecognitionCandidate(@"\frac{1}{2}", null) }, null);
+        s.SaveRecognition(page, new[] { id }, r);
+        Assert.Equal("meine Korrektur", s.EditedFormula(page));
+        Assert.Equal(@"\frac{1}{2}", s.RecognizedFormula(page));
+        Assert.Equal(2, s.FormulaVersionCount(page));
+    }
+
+    [Fact]
+    public void Erkennung_OhneErgebnis_WirdNichtGespeichert()
+    {
+        using var s = new NotebookStore(TempDb());
+        var page = s.FirstPage(s.CreateNotebook("x"));
+        var r = new RecognitionOutcome("pix2tex", "?", Array.Empty<RecognitionCandidate>(), "Fehler");
+        Assert.Throws<InvalidOperationException>(() => s.SaveRecognition(page, Array.Empty<long>(), r));
+    }
 }

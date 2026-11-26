@@ -20,6 +20,8 @@
   </ItemGroup>
   <ItemGroup>
     <Content Include="Assets\preview\**\*" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\recognizer\recognize.py;..\..\recognizer\setup-recognizer.ps1"
+             Link="Assets\recognizer\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\MathNotes.Core\MathNotes.Core.csproj" />

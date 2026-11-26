@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using MathNotes.Core;
 using Microsoft.UI;
 using Microsoft.UI.Input;
@@ -19,6 +20,9 @@ public sealed partial class MainWindow : Window
     private Polyline? _currentLine;
     private long _startTicks;
     private bool _previewReady;
+    private readonly Pix2TexClient _recognizer = new(
+        Pix2TexClient.DefaultPythonPath(),
+        System.IO.Path.Combine(AppContext.BaseDirectory, "Assets", "recognizer", "recognize.py"));
 
     public MainWindow()
     {
@@ -128,5 +132,68 @@ public sealed partial class MainWindow : Window
     {
         _store.SaveEditedFormula(_page, LatexBox.Text);
         StatusText.Text = "Korrektur gespeichert (Verlauf bleibt erhalten).";
+    }
+
+    private async void OnRecognize(object sender, RoutedEventArgs e)
+    {
+        var strokes = _store.Strokes(_page);
+        if (strokes.Count == 0) { StatusText.Text = "Keine Striche zum Erkennen."; return; }
+        if (!_recognizer.IsInstalled)
+        {
+            StatusText.Text = "Die Erkennung ist noch nicht eingerichtet. Bitte 'Erkennung einrichten...' waehlen.";
+            return;
+        }
+        RecognizeButton.IsEnabled = false;
+        StatusText.Text = "Erkennung laeuft (lokal, beim ersten Mal kann das einige Sekunden dauern) ...";
+        try
+        {
+            var result = await _recognizer.RecognizeAsync(
+                strokes.Select(s => s.Stroke).ToList(), TimeSpan.FromMinutes(3));
+            if (!result.Recognized)
+            {
+                StatusText.Text = "Keine Erkennung: " + (result.Error ?? "leeres Ergebnis");
+                return;
+            }
+            _store.SaveRecognition(_page, strokes.Select(s => s.Id).ToList(), result);
+            SuggestionBox.Text = result.Candidates[0].Latex;
+            AcceptButton.IsEnabled = true;
+            StatusText.Text = $"Vorschlag von {result.Engine} {result.EngineVersion} (ungeprueft, ohne Konfidenzwert). " +
+                              "Bitte pruefen, uebernehmen oder korrigieren. Deine Striche bleiben unveraendert.";
+        }
+        finally
+        {
+            RecognizeButton.IsEnabled = true;
+        }
+    }
+
+    private void OnAcceptSuggestion(object sender, RoutedEventArgs e)
+    {
+        LatexBox.Text = SuggestionBox.Text;
+        StatusText.Text = "Vorschlag uebernommen. Mit 'Korrektur speichern' bestaetigst du ihn.";
+    }
+
+    private async void OnSetupRecognizer(object sender, RoutedEventArgs e)
+    {
+        var dialog = new ContentDialog
+        {
+            XamlRoot = Content.XamlRoot,
+            Title = "Erkennung einrichten",
+            Content = "Es wird eine lokale Python-Umgebung angelegt und pix2tex installiert.\n\n" +
+                      "Downloads (einmalig, einige hundert MB bis GB):\n" +
+                      "- Python-Pakete von pypi.org (u. a. PyTorch)\n" +
+                      "- Modellgewichte von github.com\n\n" +
+                      "Es werden keine Notizen oder Striche uebertragen. Die Erkennung selbst laeuft offline.",
+            PrimaryButtonText = "Einrichten",
+            CloseButtonText = "Abbrechen",
+            DefaultButton = ContentDialogButton.Close,
+        };
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+        var script = System.IO.Path.Combine(AppContext.BaseDirectory, "Assets", "recognizer", "setup-recognizer.ps1");
+        Process.Start(new ProcessStartInfo("powershell.exe")
+        {
+            UseShellExecute = true,
+            Arguments = $"-NoProfile -ExecutionPolicy Bypass -File \"{script}\"",
+        });
+        StatusText.Text = "Einrichtung laeuft in einem eigenen Fenster. Danach 'Formel erkennen' waehlen.";
     }
 }
