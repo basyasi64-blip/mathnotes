@@ -126,3 +126,68 @@ def test_erkennung_nutzt_nur_sichtbare_striche_schema_bleibt_kompatibel(tmp_path
     s2.erase_strokes([sid])
     assert s2.strokes(page) == []
     s2.close()
+
+
+def test_sync_formulas_anlegen_und_wiedererkennen(store):
+    page = store.pages(store.create_notebook("x"))[0]
+    r1 = store.sync_formulas(page, [[1, 2], [3]])
+    assert [r["needs_recognition"] for r in r1] == [True, True]
+    f1, f2 = r1[0]["formula_id"], r1[1]["formula_id"]
+    assert f1 != f2
+    res = RecognitionResult("e", "1", (Candidate("a", None), Candidate("b", None)))
+    store.record_recognition(f1, [1, 2], res)
+    r2 = store.sync_formulas(page, [[1, 2], [3]])
+    assert [r["needs_recognition"] for r in r2] == [False, True]
+    assert [r["formula_id"] for r in r2] == [f1, f2]
+
+
+def test_sync_neue_striche_behalten_formel_und_korrektur(store):
+    page = store.pages(store.create_notebook("x"))[0]
+    (a,) = store.sync_formulas(page, [[1, 2]])
+    fid = a["formula_id"]
+    store.record_recognition(fid, [1, 2], RecognitionResult("e", "1", (Candidate("alt", None),)))
+    store.edit_formula(fid, "meine Korrektur")
+    (b,) = store.sync_formulas(page, [[1, 2, 3]])           # Strich 3 kommt hinzu
+    assert b["formula_id"] == fid and b["needs_recognition"] is True
+    store.record_recognition(fid, [1, 2, 3], RecognitionResult("e", "1", (Candidate("neu", None),)))
+    f, = [x for x in store.formulas(page) if x.id == fid]
+    assert f.recognized_latex == "neu" and f.edited_latex == "meine Korrektur"   # Korrektur bleibt
+
+
+def test_sync_verschwundene_gruppe_wird_nicht_geliefert_aber_nicht_geloescht(store):
+    page = store.pages(store.create_notebook("x"))[0]
+    r = store.sync_formulas(page, [[1], [2]])
+    store.edit_formula(r[1]["formula_id"], "wichtig")
+    out = store.sync_formulas(page, [[1]])                  # Strich 2 wurde radiert
+    assert [o["formula_id"] for o in out] == [r[0]["formula_id"]]
+    assert any(f.edited_latex == "wichtig" for f in store.formulas(page))   # Daten bleiben erhalten
+
+
+def test_sync_teilung_behaelt_groesseren_teil(store):
+    page = store.pages(store.create_notebook("x"))[0]
+    (a,) = store.sync_formulas(page, [[1, 2, 3]])
+    out = store.sync_formulas(page, [[1, 2], [3]])
+    assert out[0]["formula_id"] == a["formula_id"] and out[1]["formula_id"] != a["formula_id"]
+
+
+@needs_tex
+def test_export_lesereihenfolge_und_nur_sichtbare_formeln(store, tmp_path):
+    from mathnotes.segmentation import group_strokes
+    nb = store.create_notebook("Mehrere"); page = store.pages(nb)[0]
+
+    def box(x, y):
+        return Stroke((Point(x, y), Point(x + 40, y + 40)))
+
+    right, left, below, gone = store.add_strokes(page, [box(400, 0), box(0, 0), box(0, 120), box(0, 300)])
+    store.erase_strokes([gone])                                   # radiert -> darf nicht exportiert werden
+    groups = [list(g.ids) for g in group_strokes(store.strokes(page))]
+    assert groups == [[left], [right], [below]]                   # links, rechts, darunter
+    synced = store.sync_formulas(page, groups + [[gone]])         # Formel zu radiertem Strich bleibt in der DB
+    for s_, text in zip(synced, ["LINKS", "RECHTS", "UNTEN", "RADIERT"]):
+        store.record_recognition(s_["formula_id"], s_["stroke_ids"],
+                                 RecognitionResult("e", "1", (Candidate(text, None),)))
+    tex = export.build_tex(store, nb)
+    assert tex.index("LINKS") < tex.index("RECHTS") < tex.index("UNTEN")
+    assert "RADIERT" not in tex
+    ok, log = export.compile_pdf(tex, tmp_path / "m.pdf")
+    assert ok, log

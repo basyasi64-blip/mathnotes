@@ -4,6 +4,9 @@
 Aufruf:
   python recognize.py strokes.json [--engine texteller|pix2tex] [--debug-image bild.png]
   python recognize.py strokes.json --rasterize-only bild.png      (ohne Modell, zum Testen)
+  python recognize.py --serve [--engine ...]    Dauerbetrieb: Modell wird einmal geladen, dann pro Zeile
+        eine JSON-Anfrage auf stdin {"id":1,"strokes":[...],"debug_image":"pfad"} und pro Anfrage
+        eine JSON-Antwort auf stdout. Erste Zeile: {"ready":true,...} oder {"ready":false,"error":...}.
 Eingabe:  {"strokes":[{"c":"#000000","w":2.0,"p":[[x,y,druck,t_ms],...]}, ...]}
 Ausgabe:  eine JSON-Zeile auf stdout:
           {"engine":"texteller","engine_version":"...","candidates":[{"latex":"...","confidence":null}]}
@@ -69,29 +72,85 @@ def _version(pkg: str) -> str:
         return "unbekannt"
 
 
-def run_texteller(images) -> tuple[list[str], str]:
-    # Bibliotheken schreiben Meldungen auf stdout -> umleiten, damit stdout sauber bleibt
-    with contextlib.redirect_stdout(sys.stderr):
+def load_texteller():
+    """Laedt das Modell einmal; gibt (infer, version) zurueck. infer(images) -> Liste LaTeX-Texte."""
+    with contextlib.redirect_stdout(sys.stderr):   # Bibliotheken schreiben auf stdout -> umleiten
         import numpy as np
         import torch
         from texteller import load_model, load_tokenizer, img2latex
         model = load_model(use_onnx=False)
         tokenizer = load_tokenizer()
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        res = img2latex(model, tokenizer, [np.array(im) for im in images],
-                        device=device, out_format="katex")
-    return [str(r) for r in res], _version("texteller")
+
+    def infer(images):
+        with contextlib.redirect_stdout(sys.stderr):
+            res = img2latex(model, tokenizer, [np.array(im) for im in images],
+                            device=device, out_format="katex")
+        return [str(r) for r in res]
+
+    return infer, _version("texteller")
 
 
-def run_pix2tex(images) -> tuple[list[str], str]:
+def load_pix2tex():
     with contextlib.redirect_stdout(sys.stderr):
         from pix2tex.cli import LatexOCR
         model = LatexOCR()
-        res = [model(im) for im in images]
-    return [str(r) for r in res], _version("pix2tex")
+
+    def infer(images):
+        with contextlib.redirect_stdout(sys.stderr):
+            return [str(model(im)) for im in images]
+
+    return infer, _version("pix2tex")
 
 
-ENGINES = {"texteller": run_texteller, "pix2tex": run_pix2tex}
+LOADERS = {"texteller": load_texteller, "pix2tex": load_pix2tex}
+ENGINES = LOADERS   # Abwaertskompatibler Name
+
+
+def candidates_from(latex_list) -> list[dict]:
+    return [{"latex": t, "confidence": None} for t in unique_nonempty(latex_list)]
+
+
+def serve(engine_name: str, loader, stdin=None, stdout=None) -> int:
+    """Dauerbetrieb. `loader` liefert (infer, version); austauschbar fuer Tests."""
+    stdin = stdin if stdin is not None else sys.stdin
+    out = stdout if stdout is not None else sys.stdout
+
+    def emit(obj) -> None:
+        out.write(json.dumps(obj) + "\n")
+        out.flush()
+
+    try:
+        infer, ver = loader()
+    except ModuleNotFoundError as e:
+        emit({"ready": False, "error": f"Komponente fehlt: {e.name} (Erkennung '{engine_name}'). Bitte 'Erkennung einrichten' ausfuehren."})
+        return 2
+    except Exception as e:
+        emit({"ready": False, "error": f"{type(e).__name__}: {e}"})
+        return 2
+    emit({"ready": True, "engine": engine_name, "engine_version": ver})
+    for line in stdin:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            req = json.loads(line)
+            rid = req.get("id")
+        except Exception:
+            emit({"error": "Ungueltige Anfrage"})
+            continue
+        try:
+            strokes = [st for st in req.get("strokes", []) if st.get("p")]
+            images = [rasterize(strokes, th, lw) for th, lw in VARIANTS]
+            dbg = req.get("debug_image")
+            if dbg:
+                os.makedirs(os.path.dirname(os.path.abspath(dbg)), exist_ok=True)
+                images[0].save(dbg)
+            emit({"id": rid, "engine": engine_name, "engine_version": ver,
+                  "candidates": candidates_from(infer(images))})
+        except Exception as e:   # ein Fehler bei einer Anfrage beendet den Dienst nicht
+            emit({"id": rid, "error": f"{type(e).__name__}: {e}"})
+    return 0
 
 
 def unique_nonempty(items: list[str]) -> list[str]:
@@ -106,14 +165,20 @@ def unique_nonempty(items: list[str]) -> list[str]:
 
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(add_help=False)
-    ap.add_argument("strokes")
+    ap.add_argument("strokes", nargs="?")
+    ap.add_argument("--serve", action="store_true")
     ap.add_argument("--engine", default="texteller", choices=sorted(ENGINES))
     ap.add_argument("--debug-image")
     ap.add_argument("--rasterize-only")
     try:
         a = ap.parse_args(argv[1:])
     except SystemExit:
-        print(json.dumps({"error": "Aufruf: recognize.py strokes.json [--engine texteller|pix2tex] [--debug-image pfad.png]"}))
+        print(json.dumps({"error": "Aufruf: recognize.py strokes.json [--engine texteller|pix2tex] [--debug-image pfad.png] | --serve"}))
+        return 2
+    if a.serve:
+        return serve(a.engine, LOADERS[a.engine])
+    if not a.strokes:
+        print(json.dumps({"error": "Striche-Datei fehlt"}))
         return 2
     try:
         strokes = load_strokes(a.strokes)
@@ -125,9 +190,9 @@ def main(argv: list[str]) -> int:
         if a.debug_image:
             os.makedirs(os.path.dirname(os.path.abspath(a.debug_image)), exist_ok=True)
             images[0].save(a.debug_image)
-        latex_list, ver = ENGINES[a.engine](images)
-        cands = [{"latex": t, "confidence": None} for t in unique_nonempty(latex_list)]
-        print(json.dumps({"engine": a.engine, "engine_version": ver, "candidates": cands}))
+        infer, ver = LOADERS[a.engine]()
+        print(json.dumps({"engine": a.engine, "engine_version": ver,
+                          "candidates": candidates_from(infer(images))}))
         return 0
     except ModuleNotFoundError as e:
         print(json.dumps({"error": f"Komponente fehlt: {e.name} (Erkennung '{a.engine}'). Bitte 'Erkennung einrichten' ausfuehren."}))

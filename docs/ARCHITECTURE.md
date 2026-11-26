@@ -46,3 +46,17 @@ Dieselben Striche werden in zwei Darstellungen (duenn/dick, supersampled) erkann
 Das Eingabebild liegt in `%LOCALAPPDATA%\MathNotes\last_recognition.png` zur Fehlersuche.
 Falls auch TexTeller bei Handschrift scheitert, waeren naechste Optionen: Strich-basierte Erkenner (nutzen Zeitverlauf) oder ein
 freiwillig zuschaltbarer Online-Dienst mit ausdruecklicher Zustimmung (widerspricht dem Offline-Standard).
+
+## v0.7: Mehrere Formeln, Live-Erkennung
+- `StrokeGrouping` (C#, Referenz `segmentation.py`): Striche -> Gruppen. Regel: Umrandungen horizontal <= 1,5 s und vertikal <= 0,5 s
+  auseinander (s = Median der Strichgroessen). Zwei Formeln brauchen also etwas Abstand. Matrizen mit grossem Zeilenabstand koennen zerfallen.
+- `NotebookStore.SyncFormulas`: Gruppen werden per groesster Ueberlappung bestehenden Formeln zugeordnet; neue Striche aendern Id und
+  Nutzerkorrektur nicht. Spalte `recognized_ids` merkt, mit welchen Strichen zuletzt erkannt wurde (Migration beim Oeffnen).
+  Formeln ohne Gruppe bleiben in der Datenbank, erscheinen aber nicht mehr.
+- `RecognizerService`: `recognize.py --serve` als Dauerprozess, Anfragen/Antworten als JSON-Zeilen mit Id.
+  Ein Fehler/Absturz wird als Fehlermeldung gezeigt; der naechste Aufruf startet den Prozess neu.
+- Live-Ablauf: 1 s Pause nach dem letzten Strich -> gruppieren -> synchronisieren -> nur Formeln mit geaenderten Strichen erkennen
+  (nacheinander). Wird waehrenddessen weitergeschrieben, bricht die Schleife ab und die Analyse startet neu.
+  Fehlgeschlagene Erkennungen werden fuer dieselben Striche nicht automatisch wiederholt ('Jetzt erkennen' setzt das zurueck).
+- Ergebnisse sind immer 'ungeprueft'. Eine Korrektur des Nutzers (`edited_latex`) wird nie ueberschrieben; sie bleibt auch,
+  wenn spaeter Striche zur Formel hinzukommen (dann kann sie veraltet sein; es gibt dafuer noch keine Warnung).

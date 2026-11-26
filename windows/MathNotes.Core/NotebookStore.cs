@@ -10,6 +10,17 @@ public sealed record StrokeData(string Color, double Width, IReadOnlyList<PointD
 /// SQLite-Speicher mit demselben Schema wie der Python-Kern (src/mathnotes/storage.py).
 /// Originalstriche sind per Trigger unveraenderlich.
 /// </summary>
+public sealed record FormulaRecord(
+    long Id, IReadOnlyList<long> StrokeIds, string? RecognizedLatex, string? EditedLatex,
+    IReadOnlyList<long>? RecognizedIds, IReadOnlyList<string> Alternatives)
+{
+    /// <summary>Vom Nutzer bestaetigter Text hat Vorrang vor dem Erkenner-Ergebnis.</summary>
+    public string? CurrentLatex => EditedLatex ?? RecognizedLatex;
+
+    public bool NeedsRecognition =>
+        RecognizedIds is null || !new HashSet<long>(RecognizedIds).SetEquals(StrokeIds);
+}
+
 public sealed class NotebookStore : IDisposable
 {
     private const string Schema = @"
@@ -49,7 +60,21 @@ CREATE TRIGGER IF NOT EXISTS strokes_no_delete BEFORE DELETE ON strokes
         _db.Open();
         Exec("PRAGMA journal_mode=WAL");
         Exec(Schema);
+        Migrate();
         Exec("INSERT OR IGNORE INTO meta VALUES('schema_version','1')");
+    }
+
+    private void Migrate()
+    {
+        var hasCol = false;
+        using (var c = _db.CreateCommand())
+        {
+            c.CommandText = "PRAGMA table_info(formulas)";
+            using var r = c.ExecuteReader();
+            while (r.Read())
+                if (r.GetString(1) == "recognized_ids") hasCol = true;
+        }
+        if (!hasCol) Exec("ALTER TABLE formulas ADD COLUMN recognized_ids TEXT");
     }
 
     private long Exec(string sql, params (string, object?)[] args)
@@ -125,6 +150,127 @@ CREATE TRIGGER IF NOT EXISTS strokes_no_delete BEFORE DELETE ON strokes
 
     public void RestoreGroup(long groupId) =>
         Exec("DELETE FROM stroke_erasures WHERE group_id=$g", ("$g", groupId));
+
+    private static List<long> ParseIds(string json) =>
+        JsonNode.Parse(json)!.AsArray().Select(x => x!.GetValue<long>()).ToList();
+
+    private static FormulaRecord ReadFormula(SqliteDataReader r) => new(
+        r.GetInt64(0),
+        ParseIds(r.GetString(1)),
+        r.IsDBNull(2) ? null : r.GetString(2),
+        r.IsDBNull(3) ? null : r.GetString(3),
+        r.IsDBNull(4) ? null : ParseIds(r.GetString(4)),
+        r.IsDBNull(5)
+            ? new List<string>()
+            : JsonNode.Parse(r.GetString(5))!.AsArray().Select(a => a!["latex"]!.GetValue<string>()).ToList());
+
+    private const string FormulaColumns =
+        "SELECT id, stroke_ids, recognized_latex, edited_latex, recognized_ids, alternatives FROM formulas";
+
+    public List<FormulaRecord> Formulas(long pageId)
+    {
+        var res = new List<FormulaRecord>();
+        using var c = _db.CreateCommand();
+        c.CommandText = FormulaColumns + " WHERE page_id=$p ORDER BY id";
+        c.Parameters.AddWithValue("$p", pageId);
+        using var r = c.ExecuteReader();
+        while (r.Read()) res.Add(ReadFormula(r));
+        return res;
+    }
+
+    public FormulaRecord? GetFormula(long formulaId)
+    {
+        using var c = _db.CreateCommand();
+        c.CommandText = FormulaColumns + " WHERE id=$f";
+        c.Parameters.AddWithValue("$f", formulaId);
+        using var r = c.ExecuteReader();
+        return r.Read() ? ReadFormula(r) : null;
+    }
+
+    /// <summary>
+    /// Ordnet Strich-Gruppen bestehenden Formeln zu (groesste Ueberlappung) oder legt neue an.
+    /// Eine Formel behaelt Id und Nutzerkorrektur, wenn Striche hinzukommen. Formeln ohne Gruppe bleiben
+    /// unveraendert in der Datenbank, werden aber nicht zurueckgegeben. Ergebnis in Reihenfolge der Gruppen.
+    /// </summary>
+    public List<FormulaRecord> SyncFormulas(long pageId, IReadOnlyList<IReadOnlyList<long>> groups)
+    {
+        var gs = groups.Select(g => g.Distinct().OrderBy(x => x).ToList()).ToList();
+        var existing = Formulas(pageId);
+
+        var pairs = new List<(int Overlap, long Fid, int Gi)>();
+        for (var gi = 0; gi < gs.Count; gi++)
+        {
+            var set = new HashSet<long>(gs[gi]);
+            foreach (var f in existing)
+            {
+                var ov = f.StrokeIds.Count(set.Contains);
+                if (ov > 0) pairs.Add((ov, f.Id, gi));
+            }
+        }
+        var assignedG = new Dictionary<int, long>();
+        var usedF = new HashSet<long>();
+        foreach (var pr in pairs.OrderByDescending(x => x.Overlap).ThenBy(x => x.Fid).ThenBy(x => x.Gi))
+        {
+            if (assignedG.ContainsKey(pr.Gi) || usedF.Contains(pr.Fid)) continue;
+            assignedG[pr.Gi] = pr.Fid;
+            usedF.Add(pr.Fid);
+        }
+
+        var ids = new List<long>();
+        using (var tx = _db.BeginTransaction())
+        {
+            for (var gi = 0; gi < gs.Count; gi++)
+            {
+                var json = "[" + string.Join(",", gs[gi]) + "]";
+                if (assignedG.TryGetValue(gi, out var fid))
+                {
+                    var old = existing.First(f => f.Id == fid);
+                    if (!new HashSet<long>(old.StrokeIds).SetEquals(gs[gi]))
+                        Exec("UPDATE formulas SET stroke_ids=$s WHERE id=$f", ("$s", json), ("$f", fid));
+                }
+                else
+                {
+                    Exec("INSERT INTO formulas(page_id,stroke_ids) VALUES($p,$s)", ("$p", pageId), ("$s", json));
+                    fid = Scalar<long>("SELECT last_insert_rowid()");
+                }
+                ids.Add(fid);
+            }
+            tx.Commit();
+        }
+        return ids.Select(id => GetFormula(id)!).ToList();
+    }
+
+    /// <summary>Speichert ein Erkennungsergebnis fuer eine Formel. Eine Nutzerkorrektur bleibt unveraendert.</summary>
+    public void SaveRecognitionFor(long formulaId, IReadOnlyList<long> strokeIds, RecognitionOutcome r)
+    {
+        if (!r.Recognized) throw new InvalidOperationException("Nichts erkannt");
+        if (Scalar<long?>("SELECT id FROM formulas WHERE id=$f", ("$f", formulaId)) is null)
+            throw new KeyNotFoundException($"Formel {formulaId}");
+        var best = r.Candidates[0];
+        var alts = new JsonArray();
+        foreach (var c in r.Candidates.Skip(1))
+            alts.Add(new JsonObject { ["latex"] = c.Latex, ["confidence"] = c.Confidence });
+        var ids = "[" + string.Join(",", strokeIds.Distinct().OrderBy(x => x)) + "]";
+        using var tx = _db.BeginTransaction();
+        Exec("UPDATE formulas SET recognized_latex=$l, confidence=$c, alternatives=$a, engine=$e, recognized_ids=$ri WHERE id=$f",
+             ("$l", best.Latex), ("$c", best.Confidence), ("$a", alts.ToJsonString()),
+             ("$e", $"{r.Engine}@{r.EngineVersion}"), ("$ri", ids), ("$f", formulaId));
+        Exec("INSERT INTO formula_versions(formula_id,latex,source) VALUES($f,$l,$src)",
+             ("$f", formulaId), ("$l", best.Latex), ("$src", "recognizer:" + r.Engine));
+        tx.Commit();
+    }
+
+    /// <summary>Nutzerkorrektur einer bestimmten Formel; Verlauf bleibt erhalten.</summary>
+    public void EditFormula(long formulaId, string latex)
+    {
+        if (Scalar<long?>("SELECT id FROM formulas WHERE id=$f", ("$f", formulaId)) is null)
+            throw new KeyNotFoundException($"Formel {formulaId}");
+        using var tx = _db.BeginTransaction();
+        Exec("UPDATE formulas SET edited_latex=$l WHERE id=$f", ("$l", latex), ("$f", formulaId));
+        Exec("INSERT INTO formula_versions(formula_id,latex,source) VALUES($f,$l,'user')",
+             ("$f", formulaId), ("$l", latex));
+        tx.Commit();
+    }
 
     /// <summary>Speichert einen Erkenner-Vorschlag. Eine vorhandene Nutzerkorrektur bleibt unveraendert.</summary>
     public long SaveRecognition(long pageId, IReadOnlyList<long> strokeIds, RecognitionOutcome r)

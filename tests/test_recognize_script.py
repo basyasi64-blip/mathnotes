@@ -72,3 +72,61 @@ def test_debug_bild_wird_geschrieben_und_fehler_bleibt_sauber(tmp_path):
     code, stdout, _ = _run(f, "--debug-image", dbg)
     assert code == 2 and "texteller" in json.loads(stdout)["error"]
     assert dbg.exists()          # das Eingabebild wurde trotzdem zur Fehlersuche gespeichert
+
+
+def _load_mod():
+    spec = importlib.util.spec_from_file_location("recognize_mod2", SCRIPT)
+    mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
+    return mod
+
+
+def _serve(mod, lines, loader):
+    import io
+    out = io.StringIO()
+    code = mod.serve("test", loader, stdin=io.StringIO("\n".join(lines) + "\n"), stdout=out)
+    return code, [json.loads(l) for l in out.getvalue().splitlines()]
+
+
+GOOD = {"c": "#000", "w": 2, "p": [[0, 0, .5, 0], [30, 40, .5, 3]]}
+
+
+def test_serve_protokoll_mehrere_anfragen_modell_einmal_geladen():
+    mod = _load_mod()
+    loads = []
+
+    def loader():
+        loads.append(1)
+        return (lambda images: [f"v{len(images)}", "v2", "  "]), "9.9"
+
+    reqs = [json.dumps({"id": 1, "strokes": [GOOD]}), json.dumps({"id": 2, "strokes": [GOOD]})]
+    code, resp = _serve(mod, reqs, loader)
+    assert code == 0 and len(loads) == 1                      # Modell nur einmal geladen
+    assert resp[0] == {"ready": True, "engine": "test", "engine_version": "9.9"}
+    assert [r["id"] for r in resp[1:]] == [1, 2]
+    assert [c["latex"] for c in resp[1]["candidates"]] == ["v2"]   # Duplikate/Leeres entfernt
+
+
+def test_serve_fehler_einer_anfrage_beendet_dienst_nicht():
+    mod = _load_mod()
+    loader = lambda: ((lambda images: ["ok"]), "1")
+    reqs = [json.dumps({"id": 1, "strokes": []}),               # leer -> Fehler
+            "kein json",
+            json.dumps({"id": 3, "strokes": [GOOD]})]
+    code, resp = _serve(mod, reqs, loader)
+    assert code == 0
+    assert "error" in resp[1] and resp[1]["id"] == 1
+    assert resp[2] == {"error": "Ungueltige Anfrage"}
+    assert resp[3]["candidates"][0]["latex"] == "ok"           # danach geht es weiter
+
+
+def test_serve_debug_bild_und_ladefehler(tmp_path):
+    mod = _load_mod()
+    dbg = tmp_path / "x" / "d.png"
+    code, resp = _serve(mod, [json.dumps({"id": 1, "strokes": [GOOD], "debug_image": str(dbg)})],
+                        lambda: ((lambda images: ["a"]), "1"))
+    assert dbg.exists()
+
+    def broken():
+        raise ModuleNotFoundError("Fehlt", name="texteller")
+    code, resp = _serve(mod, [], broken)
+    assert code == 2 and resp[0]["ready"] is False and "texteller" in resp[0]["error"]

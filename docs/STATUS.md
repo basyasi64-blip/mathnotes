@@ -20,3 +20,14 @@
 | Windows-Installer, Portable Version | Noch nicht implementiert |
 | Windows-CI (Python-Tests, C#-Tests, App-Publish als portable Version) | Vorbereitet, **noch nie gelaufen** |
 | Verschluesselung, Auto-Backup, Wissensnetz, Simulation u. a. | Noch nicht implementiert |
+
+## v0.7: mehrere Formeln und Live-Erkennung
+| Funktion | Status |
+|---|---|
+| Striche zu Formeln gruppieren (neben-/untereinander, Lesereihenfolge) | Python-Referenz getestet (8 Faelle); C#-Port mit gleichen Tests, laeuft erst in der CI |
+| Zuordnung Gruppen <-> Formeln (Id und Nutzerkorrektur bleiben beim Weiterschreiben erhalten) | Python getestet; C#-Port mit gleichen Tests, laeuft erst in der CI |
+| Erkenner als Dauerprozess (Modell einmal laden, Protokoll per JSON-Zeilen) | Protokoll und Fehlerverhalten getestet (mit Test-Erkenner); **echtes TexTeller-Modell hier nie gelaufen** |
+| Live-Erkennung (Pause 1 s nach dem Schreiben, nur geaenderte Formeln) | Implementiert, **Bedienung ungetestet** |
+| Formelliste mit gerenderter Vorschau, Auswahl, Korrektur, Kandidaten; gestrichelte Rahmen mit Nummern auf der Schreibflaeche | Implementiert, **ungetestet** (C#/WinUI nur in der CI kompiliert) |
+| PDF/LaTeX-Export: sichtbare Formeln in Lesereihenfolge | Python getestet; der Export ist weiterhin nur per Kommandozeile erreichbar, nicht aus der App |
+| Schreibflaeche = sichtbarer Fensterbereich (App startet maximiert); kein Scrollen/Zoomen | Bekannte Einschraenkung |

@@ -52,8 +52,14 @@ class Store:
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.execute("PRAGMA foreign_keys=ON")
         self.db.executescript(SCHEMA)
+        self._migrate()
         self.db.execute("INSERT OR IGNORE INTO meta VALUES('schema_version', ?)", (SCHEMA_VERSION,))
         self.db.commit()
+
+    def _migrate(self) -> None:
+        cols = {r[1] for r in self.db.execute("PRAGMA table_info(formulas)")}
+        if "recognized_ids" not in cols:   # Striche, mit denen zuletzt erkannt wurde (JSON)
+            self.db.execute("ALTER TABLE formulas ADD COLUMN recognized_ids TEXT")
 
     def close(self) -> None:
         self.db.close()
@@ -113,6 +119,61 @@ class Store:
                 self.db.execute("INSERT INTO formula_versions(formula_id,latex,source) VALUES(?,?,?)",
                                 (fid, best.latex, f"recognizer:{result.engine}"))
         return fid
+
+    def sync_formulas(self, page_id: int, groups: Sequence[Sequence[int]]) -> list[dict]:
+        """Ordnet Stroh-Gruppen bestehenden Formeln zu (groesste Ueberlappung) oder legt neue an.
+        Eine Formel behaelt ihre Id und ihre Nutzerkorrektur, wenn Striche hinzukommen.
+        Formeln ohne Gruppe bleiben unveraendert in der Datenbank, werden aber nicht zurueckgegeben."""
+        groups = [sorted(set(g)) for g in groups]
+        existing = {}
+        for fid, sids, rids in self.db.execute(
+                "SELECT id, stroke_ids, recognized_ids FROM formulas WHERE page_id=? ORDER BY id", (page_id,)):
+            existing[fid] = (set(json.loads(sids)), set(json.loads(rids)) if rids else None)
+        pairs = []
+        for gi, g in enumerate(groups):
+            gs = set(g)
+            for fid, (fs, _) in existing.items():
+                ov = len(gs & fs)
+                if ov:
+                    pairs.append((-ov, fid, gi))
+        pairs.sort()
+        assigned_g: dict[int, int] = {}
+        used_f: set[int] = set()
+        for _, fid, gi in pairs:
+            if gi not in assigned_g and fid not in used_f:
+                assigned_g[gi] = fid
+                used_f.add(fid)
+        out = []
+        with self.db:
+            for gi, g in enumerate(groups):
+                fid = assigned_g.get(gi)
+                if fid is None:
+                    fid = self.db.execute("INSERT INTO formulas(page_id,stroke_ids) VALUES(?,?)",
+                                          (page_id, json.dumps(g))).lastrowid
+                    rec = None
+                else:
+                    if existing[fid][0] != set(g):
+                        self.db.execute("UPDATE formulas SET stroke_ids=? WHERE id=?", (json.dumps(g), fid))
+                    rec = existing[fid][1]
+                out.append({"formula_id": fid, "stroke_ids": g,
+                            "needs_recognition": rec is None or rec != set(g)})
+        return out
+
+    def record_recognition(self, formula_id: int, stroke_ids: Sequence[int], result: RecognitionResult) -> None:
+        """Speichert ein Erkennungsergebnis. Eine vorhandene Nutzerkorrektur bleibt unveraendert."""
+        if not result.recognized:
+            raise ValueError("nichts erkannt")
+        best = result.candidates[0]
+        alts = [{"latex": c.latex, "confidence": c.confidence} for c in result.candidates[1:]]
+        with self.db:
+            cur = self.db.execute(
+                "UPDATE formulas SET recognized_latex=?, confidence=?, alternatives=?, engine=?, recognized_ids=? WHERE id=?",
+                (best.latex, best.confidence, json.dumps(alts), f"{result.engine}@{result.engine_version}",
+                 json.dumps(sorted(set(stroke_ids))), formula_id))
+            if cur.rowcount != 1:
+                raise KeyError(formula_id)
+            self.db.execute("INSERT INTO formula_versions(formula_id,latex,source) VALUES(?,?,?)",
+                            (formula_id, best.latex, f"recognizer:{result.engine}"))
 
     def edit_formula(self, formula_id: int, latex: str) -> None:
         """Nutzerkorrektur: Verlauf bleibt erhalten, Erkenner-Ergebnis wird nicht ueberschrieben."""

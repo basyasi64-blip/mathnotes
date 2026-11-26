@@ -14,45 +14,50 @@
         </Grid.ColumnDefinitions>
 
         <StackPanel Grid.Row="0" Grid.Column="0" Orientation="Horizontal" Spacing="8">
-            <TextBlock Text="Original (Handschrift)" FontWeight="SemiBold" VerticalAlignment="Center" />
+            <TextBlock Text="Handschrift" FontWeight="SemiBold" VerticalAlignment="Center" />
             <ToggleButton x:Name="EraserToggle" Content="Radierer" />
             <Button Content="R&#252;ckg&#228;ngig" Click="OnUndo" />
             <Button Content="Alles l&#246;schen" Click="OnClearAll" />
         </StackPanel>
-        <TextBlock Grid.Row="0" Grid.Column="1" Text="Gesetzte Formel und LaTeX (bearbeitbar)" FontWeight="SemiBold" />
+
+        <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Spacing="8">
+            <ToggleSwitch x:Name="LiveToggle" OnContent="Live-Erkennung an" OffContent="Live-Erkennung aus"
+                          VerticalAlignment="Center" />
+            <Button Content="Jetzt erkennen" Click="OnRecognizeNow" />
+            <Button Content="Erkennung einrichten..." Click="OnSetupRecognizer" />
+        </StackPanel>
 
         <Border Grid.Row="1" Grid.Column="0" BorderBrush="Gray" BorderThickness="1">
-            <Canvas x:Name="InkSurface" Background="White"
-                    PointerPressed="OnPointerPressed" PointerMoved="OnPointerMoved"
-                    PointerReleased="OnPointerReleased" PointerCanceled="OnPointerReleased" />
+            <Grid>
+                <Canvas x:Name="InkSurface" Background="White"
+                        PointerPressed="OnPointerPressed" PointerMoved="OnPointerMoved"
+                        PointerReleased="OnPointerReleased" PointerCanceled="OnPointerReleased" />
+                <Canvas x:Name="OverlaySurface" IsHitTestVisible="False" />
+            </Grid>
         </Border>
 
         <Grid Grid.Row="1" Grid.Column="1" RowSpacing="8">
             <Grid.RowDefinitions>
-                <RowDefinition Height="2*" />
                 <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
             <Border BorderBrush="Gray" BorderThickness="1">
                 <WebView2 x:Name="Preview" />
             </Border>
-            <TextBox x:Name="LatexBox" Grid.Row="1" AcceptsReturn="True" TextWrapping="Wrap"
-                     FontFamily="Consolas" PlaceholderText="LaTeX hier eingeben, z. B. \frac{a}{b}" />
-            <StackPanel Grid.Row="2" Spacing="6">
-                <StackPanel Orientation="Horizontal" Spacing="8">
-                    <Button x:Name="RecognizeButton" Content="Formel erkennen" Click="OnRecognize" />
-                    <Button Content="Erkennung einrichten..." Click="OnSetupRecognizer" />
-                </StackPanel>
-                <TextBox x:Name="SuggestionBox" Header="Erkennungsvorschlag (ungeprueft)" IsReadOnly="True"
-                         TextWrapping="Wrap" FontFamily="Consolas" MinHeight="48" />
-                <ComboBox x:Name="CandidateBox" Header="Weitere Vorschl&#228;ge" Visibility="Collapsed"
-                          HorizontalAlignment="Stretch" SelectionChanged="OnCandidateChanged" />
-                <Button x:Name="AcceptButton" Content="Vorschlag uebernehmen" Click="OnAcceptSuggestion" IsEnabled="False" />
-            </StackPanel>
-            <Button Grid.Row="3" Content="Korrektur speichern" Click="OnSaveFormula" />
+            <TextBlock x:Name="SelectedLabel" Grid.Row="1" FontWeight="SemiBold"
+                       Text="Keine Formel gew&#228;hlt (in der Liste oben anklicken)" />
+            <TextBox x:Name="LatexBox" Grid.Row="2" AcceptsReturn="True" TextWrapping="Wrap" Height="96"
+                     FontFamily="Consolas" IsEnabled="False" TextChanged="OnLatexChanged"
+                     PlaceholderText="LaTeX der gew&#228;hlten Formel" />
+            <ComboBox x:Name="CandidateBox" Grid.Row="3" Header="Weitere Vorschl&#228;ge" Visibility="Collapsed"
+                      HorizontalAlignment="Stretch" SelectionChanged="OnCandidateChanged" />
+            <Button x:Name="SaveButton" Grid.Row="4" Content="Korrektur speichern" Click="OnSaveFormula"
+                    IsEnabled="False" />
         </Grid>
 
-        <TextBlock x:Name="StatusText" Grid.Row="2" Grid.ColumnSpan="2" Opacity="0.7" />
+        <TextBlock x:Name="StatusText" Grid.Row="2" Grid.ColumnSpan="2" Opacity="0.7" TextWrapping="Wrap" />
     </Grid>
 </Window>

@@ -3,17 +3,35 @@
 <link rel="stylesheet" href="katex/katex.min.css">
 <script src="katex/katex.min.js"></script>
 <style>
-  body { font-family: "Segoe UI", sans-serif; margin: 16px; font-size: 1.3em; }
-  .hint { opacity: .5; font-size: .6em; }
-  .err { color: #b00020; font-size: .6em; font-family: Consolas, monospace; white-space: pre-wrap; }
+  body { font-family: "Segoe UI", sans-serif; margin: 8px; background: #fff; color: #111; }
+  .item { border: 1px solid #ccc; border-radius: 6px; padding: 6px 10px; margin: 6px 0; cursor: pointer; }
+  .item.sel { border-color: #d9480f; box-shadow: 0 0 0 2px #ffd8a8; }
+  .meta { font-size: .75em; opacity: .65; margin-bottom: 2px; }
+  .tex { font-size: 1.15em; overflow-x: auto; }
+  .katex-display { margin: .3em 0; }
+  .err { color: #b00020; font-size: .8em; font-family: Consolas, monospace; white-space: pre-wrap; }
+  .empty { opacity: .5; font-size: .85em; }
 </style></head>
-<body><div id="out"></div>
+<body><div id="out"><div class="empty">Schreibe links eine Formel. Gefundene Formeln erscheinen hier.</div></div>
 <script>
 function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
-function render(tex){
+function renderAll(items){
   var o = document.getElementById('out');
-  if(!tex || !tex.trim()){ o.innerHTML = '<span class="hint">Vorschau erscheint hier</span>'; return; }
-  try { katex.render(tex, o, {displayMode:true, throwOnError:true}); }
-  catch(e){ o.innerHTML = '<div class="err">LaTeX-Fehler: ' + esc(e.message) + '</div>'; }
+  var y = window.scrollY;
+  o.innerHTML = '';
+  if(!items.length){ o.innerHTML = '<div class="empty">Schreibe links eine Formel. Gefundene Formeln erscheinen hier.</div>'; return; }
+  items.forEach(function(it){
+    var d = document.createElement('div'); d.className = 'item' + (it.selected ? ' sel' : '');
+    var m = document.createElement('div'); m.className = 'meta'; m.textContent = 'Formel ' + it.n + ' \u00b7 ' + it.state; d.appendChild(m);
+    var t = document.createElement('div'); t.className = 'tex'; d.appendChild(t);
+    if(!it.latex || !it.latex.trim()){ t.innerHTML = '<span class="empty">(noch keine Formel)</span>'; }
+    else {
+      try { katex.render(it.latex, t, {displayMode:true, throwOnError:true}); }
+      catch(e){ t.innerHTML = '<div class="err">LaTeX-Fehler: ' + esc(e.message) + '</div>'; }
+    }
+    d.addEventListener('click', function(){ window.chrome.webview.postMessage(String(it.id)); });
+    o.appendChild(d);
+  });
+  window.scrollTo(0, y);
 }
 </script></body></html>
