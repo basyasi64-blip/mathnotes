@@ -91,3 +91,38 @@ def test_ungueltiges_latex_meldet_fehler(store, tmp_path):
     store.add_formula(page, [], RecognitionResult("e", "1", (Candidate(r"\frac{", 0.5),)))
     ok, _ = export.compile_pdf(export.build_tex(store, nb), tmp_path / "o.pdf")
     assert not ok
+
+
+def test_radieren_blendet_aus_und_bewahrt_original(store):
+    page = store.pages(store.create_notebook("x"))[0]
+    a, b = store.add_strokes(page, [_stroke(), _stroke()])
+    g = store.erase_strokes([a])
+    assert g > 0
+    assert [i for i, _ in store.strokes(page)] == [b]                       # a ausgeblendet
+    assert [i for i, _ in store.strokes(page, include_erased=True)] == [a, b]  # Original noch da
+    # Originalzeile ist weiterhin unveraenderlich vorhanden
+    assert store.db.execute("SELECT COUNT(*) FROM strokes").fetchone()[0] == 2
+
+
+def test_wiederherstellen_und_gruppen(store):
+    page = store.pages(store.create_notebook("x"))[0]
+    ids = store.add_strokes(page, [_stroke(), _stroke(), _stroke()])
+    g1 = store.erase_strokes(ids[:2])
+    g2 = store.erase_strokes([ids[2]])
+    assert g1 != g2 and store.strokes(page) == []
+    store.restore_group(g1)
+    assert [i for i, _ in store.strokes(page)] == ids[:2]
+    assert store.erase_strokes([]) == 0
+
+
+def test_erkennung_nutzt_nur_sichtbare_striche_schema_bleibt_kompatibel(tmp_path):
+    # Datenbank im alten Format (ohne stroke_erasures) wird beim Oeffnen migriert
+    import sqlite3
+    p = tmp_path / "alt.db"
+    s = Store(p); nb = s.create_notebook("x"); s.db.execute("DROP TABLE stroke_erasures"); s.db.commit(); s.close()
+    s2 = Store(p)
+    page = s2.pages(nb)[0]
+    sid, = s2.add_strokes(page, [_stroke()])
+    s2.erase_strokes([sid])
+    assert s2.strokes(page) == []
+    s2.close()

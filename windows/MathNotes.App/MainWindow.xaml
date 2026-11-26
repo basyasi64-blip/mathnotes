@@ -13,7 +13,12 @@
             <ColumnDefinition Width="2*" />
         </Grid.ColumnDefinitions>
 
-        <TextBlock Grid.Row="0" Grid.Column="0" Text="Original (Handschrift)" FontWeight="SemiBold" />
+        <StackPanel Grid.Row="0" Grid.Column="0" Orientation="Horizontal" Spacing="8">
+            <TextBlock Text="Original (Handschrift)" FontWeight="SemiBold" VerticalAlignment="Center" />
+            <ToggleButton x:Name="EraserToggle" Content="Radierer" />
+            <Button Content="R&#252;ckg&#228;ngig" Click="OnUndo" />
+            <Button Content="Alles l&#246;schen" Click="OnClearAll" />
+        </StackPanel>
         <TextBlock Grid.Row="0" Grid.Column="1" Text="Gesetzte Formel und LaTeX (bearbeitbar)" FontWeight="SemiBold" />
 
         <Border Grid.Row="1" Grid.Column="0" BorderBrush="Gray" BorderThickness="1">

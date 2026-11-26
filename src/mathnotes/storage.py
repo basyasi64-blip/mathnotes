@@ -17,6 +17,9 @@ CREATE TABLE IF NOT EXISTS pages(
 CREATE TABLE IF NOT EXISTS strokes(
   id INTEGER PRIMARY KEY, page_id INTEGER NOT NULL REFERENCES pages(id),
   data TEXT NOT NULL, created_utc TEXT NOT NULL DEFAULT (datetime('now')));
+CREATE TABLE IF NOT EXISTS stroke_erasures(
+  stroke_id INTEGER PRIMARY KEY REFERENCES strokes(id),
+  group_id INTEGER NOT NULL, erased_utc TEXT NOT NULL DEFAULT (datetime('now')));
 CREATE TABLE IF NOT EXISTS formulas(
   id INTEGER PRIMARY KEY, page_id INTEGER NOT NULL REFERENCES pages(id),
   stroke_ids TEXT NOT NULL, recognized_latex TEXT, edited_latex TEXT,
@@ -74,9 +77,26 @@ class Store:
             return [self.db.execute("INSERT INTO strokes(page_id,data) VALUES(?,?)",
                                     (page_id, _enc(s))).lastrowid for s in strokes]
 
-    def strokes(self, page_id: int) -> list[tuple[int, Stroke]]:
-        return [(i, _dec(d)) for i, d in self.db.execute(
-            "SELECT id, data FROM strokes WHERE page_id=? ORDER BY id", (page_id,))]
+    def strokes(self, page_id: int, include_erased: bool = False) -> list[tuple[int, Stroke]]:
+        """Standard: nur sichtbare Striche. Geloeschte bleiben als Original erhalten (include_erased=True)."""
+        sql = "SELECT id, data FROM strokes WHERE page_id=?"
+        if not include_erased:
+            sql += " AND id NOT IN (SELECT stroke_id FROM stroke_erasures)"
+        return [(i, _dec(d)) for i, d in self.db.execute(sql + " ORDER BY id", (page_id,))]
+
+    def erase_strokes(self, stroke_ids: Sequence[int]) -> int:
+        """Blendet Striche aus (Original bleibt). Gibt die Gruppen-Id zurueck (0 = nichts zu tun)."""
+        if not stroke_ids:
+            return 0
+        with self.db:
+            gid = self.db.execute("SELECT COALESCE(MAX(group_id),0)+1 FROM stroke_erasures").fetchone()[0]
+            for sid in stroke_ids:
+                self.db.execute("INSERT OR IGNORE INTO stroke_erasures(stroke_id, group_id) VALUES(?,?)", (sid, gid))
+        return gid
+
+    def restore_group(self, group_id: int) -> None:
+        with self.db:
+            self.db.execute("DELETE FROM stroke_erasures WHERE group_id=?", (group_id,))
 
     # --- Formeln
     def add_formula(self, page_id: int, stroke_ids: list[int], result: RecognitionResult) -> int:

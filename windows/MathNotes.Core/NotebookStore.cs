@@ -23,6 +23,9 @@ CREATE TABLE IF NOT EXISTS pages(
 CREATE TABLE IF NOT EXISTS strokes(
   id INTEGER PRIMARY KEY, page_id INTEGER NOT NULL REFERENCES pages(id),
   data TEXT NOT NULL, created_utc TEXT NOT NULL DEFAULT (datetime('now')));
+CREATE TABLE IF NOT EXISTS stroke_erasures(
+  stroke_id INTEGER PRIMARY KEY REFERENCES strokes(id),
+  group_id INTEGER NOT NULL, erased_utc TEXT NOT NULL DEFAULT (datetime('now')));
 CREATE TABLE IF NOT EXISTS formulas(
   id INTEGER PRIMARY KEY, page_id INTEGER NOT NULL REFERENCES pages(id),
   stroke_ids TEXT NOT NULL, recognized_latex TEXT, edited_latex TEXT,
@@ -91,11 +94,14 @@ CREATE TRIGGER IF NOT EXISTS strokes_no_delete BEFORE DELETE ON strokes
         return Scalar<long>("SELECT last_insert_rowid()");
     }
 
-    public List<(long Id, StrokeData Stroke)> Strokes(long pageId)
+    /// <summary>Nur sichtbare Striche. Geloeschte bleiben als Original erhalten (includeErased).</summary>
+    public List<(long Id, StrokeData Stroke)> Strokes(long pageId, bool includeErased = false)
     {
         var res = new List<(long, StrokeData)>();
         using var c = _db.CreateCommand();
-        c.CommandText = "SELECT id,data FROM strokes WHERE page_id=$p ORDER BY id";
+        c.CommandText = "SELECT id,data FROM strokes WHERE page_id=$p" +
+            (includeErased ? "" : " AND id NOT IN (SELECT stroke_id FROM stroke_erasures)") +
+            " ORDER BY id";
         c.Parameters.AddWithValue("$p", pageId);
         using var r = c.ExecuteReader();
         while (r.Read())
@@ -104,6 +110,21 @@ CREATE TRIGGER IF NOT EXISTS strokes_no_delete BEFORE DELETE ON strokes
         }
         return res;
     }
+
+    /// <summary>Blendet Striche aus (Original bleibt). Gibt die Gruppen-Id zurueck, 0 wenn nichts zu tun war.</summary>
+    public long EraseStrokes(IReadOnlyList<long> strokeIds)
+    {
+        if (strokeIds.Count == 0) return 0;
+        using var tx = _db.BeginTransaction();
+        var gid = Scalar<long>("SELECT COALESCE(MAX(group_id),0)+1 FROM stroke_erasures");
+        foreach (var id in strokeIds)
+            Exec("INSERT OR IGNORE INTO stroke_erasures(stroke_id, group_id) VALUES($s,$g)", ("$s", id), ("$g", gid));
+        tx.Commit();
+        return gid;
+    }
+
+    public void RestoreGroup(long groupId) =>
+        Exec("DELETE FROM stroke_erasures WHERE group_id=$g", ("$g", groupId));
 
     /// <summary>Speichert einen Erkenner-Vorschlag. Eine vorhandene Nutzerkorrektur bleibt unveraendert.</summary>
     public long SaveRecognition(long pageId, IReadOnlyList<long> strokeIds, RecognitionOutcome r)

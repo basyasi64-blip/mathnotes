@@ -87,4 +87,43 @@ public class NotebookStoreTests
         var r = new RecognitionOutcome("pix2tex", "?", Array.Empty<RecognitionCandidate>(), "Fehler");
         Assert.Throws<InvalidOperationException>(() => s.SaveRecognition(page, Array.Empty<long>(), r));
     }
+
+    [Fact]
+    public void Radieren_BlendetAus_UndBewahrtOriginal()
+    {
+        using var s = new NotebookStore(TempDb());
+        var page = s.FirstPage(s.CreateNotebook("x"));
+        var a = s.AddStroke(page, Sample());
+        var b = s.AddStroke(page, Sample());
+        var g = s.EraseStrokes(new[] { a });
+        Assert.True(g > 0);
+        Assert.Equal(new[] { b }, s.Strokes(page).Select(x => x.Id).ToArray());
+        Assert.Equal(new[] { a, b }, s.Strokes(page, includeErased: true).Select(x => x.Id).ToArray());
+    }
+
+    [Fact]
+    public void Wiederherstellen_Gruppenweise()
+    {
+        using var s = new NotebookStore(TempDb());
+        var page = s.FirstPage(s.CreateNotebook("x"));
+        var ids = new[] { s.AddStroke(page, Sample()), s.AddStroke(page, Sample()), s.AddStroke(page, Sample()) };
+        var g1 = s.EraseStrokes(ids.Take(2).ToList());
+        var g2 = s.EraseStrokes(new[] { ids[2] });
+        Assert.NotEqual(g1, g2);
+        Assert.Empty(s.Strokes(page));
+        s.RestoreGroup(g1);
+        Assert.Equal(ids.Take(2).ToArray(), s.Strokes(page).Select(x => x.Id).ToArray());
+        Assert.Equal(0, s.EraseStrokes(Array.Empty<long>()));
+    }
+
+    [Fact]
+    public void Erkennung_NutztNurSichtbareStriche()
+    {
+        using var s = new NotebookStore(TempDb());
+        var page = s.FirstPage(s.CreateNotebook("x"));
+        var a = s.AddStroke(page, Sample());
+        s.AddStroke(page, Sample());
+        s.EraseStrokes(new[] { a });
+        Assert.Single(s.Strokes(page));
+    }
 }

@@ -20,6 +20,10 @@ public sealed partial class MainWindow : Window
     private Polyline? _currentLine;
     private long _startTicks;
     private bool _previewReady;
+    private bool _erasing;
+    private HashSet<long>? _pendingErase;
+    private readonly Stack<(char Kind, long Id)> _undo = new();   // 'D' = Strich gezeichnet, 'E' = Radiergruppe
+    private const double EraseRadius = 14;
     private readonly Pix2TexClient _recognizer = new(
         Pix2TexClient.DefaultPythonPath(),
         System.IO.Path.Combine(AppContext.BaseDirectory, "Assets", "recognizer", "recognize.py"));
@@ -35,8 +39,7 @@ public sealed partial class MainWindow : Window
         _page = _store.FirstPage(nb);
         Closed += (_, _) => _store.Dispose();
 
-        foreach (var (_, s) in _store.Strokes(_page))
-            InkSurface.Children.Add(ToPolyline(s));
+        ReloadCanvas();
         LatexBox.Text = _store.EditedFormula(_page) ?? "";
         LatexBox.TextChanged += async (_, _) => await RenderPreviewAsync();
         _ = InitPreviewAsync();
@@ -73,6 +76,49 @@ public sealed partial class MainWindow : Window
         await Preview.CoreWebView2.ExecuteScriptAsync(js);
     }
 
+    private void ReloadCanvas()
+    {
+        InkSurface.Children.Clear();
+        foreach (var (id, st) in _store.Strokes(_page))
+        {
+            var pl = ToPolyline(st);
+            pl.Tag = id;
+            InkSurface.Children.Add(pl);
+        }
+    }
+
+    private void EraseAt(Point pos)
+    {
+        foreach (var pl in InkSurface.Children.OfType<Polyline>().ToList())
+        {
+            if (pl.Tag is long id && !_pendingErase!.Contains(id) &&
+                StrokeGeometry.Hits(pl.Points.Select(q => (q.X, q.Y)), pos.X, pos.Y, EraseRadius))
+            {
+                _pendingErase.Add(id);
+                InkSurface.Children.Remove(pl);
+            }
+        }
+    }
+
+    private void OnUndo(object sender, RoutedEventArgs e)
+    {
+        if (_undo.Count == 0) { StatusText.Text = "Nichts zum Rueckgaengigmachen."; return; }
+        var (kind, id) = _undo.Pop();
+        if (kind == 'D') _store.EraseStrokes(new[] { id });   // gezeichneten Strich wieder ausblenden
+        else _store.RestoreGroup(id);                          // Radieren rueckgaengig
+        ReloadCanvas();
+        StatusText.Text = "Rueckgaengig gemacht.";
+    }
+
+    private void OnClearAll(object sender, RoutedEventArgs e)
+    {
+        var ids = _store.Strokes(_page).Select(s => s.Id).ToList();
+        if (ids.Count == 0) return;
+        _undo.Push(('E', _store.EraseStrokes(ids)));
+        ReloadCanvas();
+        StatusText.Text = "Alle Striche ausgeblendet. Mit 'Rueckgaengig' holst du sie zurueck (Originale bleiben gespeichert).";
+    }
+
     private static Polyline ToPolyline(StrokeData s)
     {
         var line = new Polyline
@@ -90,6 +136,14 @@ public sealed partial class MainWindow : Window
     private void OnPointerPressed(object sender, PointerRoutedEventArgs e)
     {
         InkSurface.CapturePointer(e.Pointer);
+        var pp0 = e.GetCurrentPoint(InkSurface);
+        _erasing = EraserToggle.IsChecked == true || pp0.Properties.IsEraser;   // auch Stift-Radierende
+        if (_erasing)
+        {
+            _pendingErase = new HashSet<long>();
+            EraseAt(pp0.Position);
+            return;
+        }
         _current = new List<PointData>();
         _startTicks = Environment.TickCount64;
         _currentLine = new Polyline
@@ -106,16 +160,31 @@ public sealed partial class MainWindow : Window
 
     private void OnPointerMoved(object sender, PointerRoutedEventArgs e)
     {
+        if (_erasing) { EraseAt(e.GetCurrentPoint(InkSurface).Position); return; }
         if (_current is null) return;
         AddPoint(e);
     }
 
     private void OnPointerReleased(object sender, PointerRoutedEventArgs e)
     {
+        if (_erasing)
+        {
+            _erasing = false;
+            InkSurface.ReleasePointerCapture(e.Pointer);
+            if (_pendingErase is { Count: > 0 })
+            {
+                _undo.Push(('E', _store.EraseStrokes(_pendingErase.ToList())));
+                StatusText.Text = $"{_pendingErase.Count} Strich(e) ausgeblendet. Mit 'Rueckgaengig' wiederherstellbar.";
+            }
+            _pendingErase = null;
+            return;
+        }
         if (_current is null) return;
         AddPoint(e);
         InkSurface.ReleasePointerCapture(e.Pointer);
-        _store.AddStroke(_page, new StrokeData("#000000", 2.0, _current));
+        var newId = _store.AddStroke(_page, new StrokeData("#000000", 2.0, _current));
+        _currentLine!.Tag = newId;
+        _undo.Push(('D', newId));
         _current = null;
         _currentLine = null;
     }

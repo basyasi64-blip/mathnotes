@@ -12,7 +12,8 @@
 | Handschrifterkennung Mathematik: pix2tex (lokal, Python-Sidecar) | Implementiert (Strich-Rasterisierung, Aufruf, Parser, Speicherung, Einrichtungsskript); Rasterisierung/Parser/Fehlerpfade getestet; **echter Modelllauf und Genauigkeit bei Handschrift ungetestet** |
 | WinUI-3-Oberflaeche (Strich-Canvas mit Druck, Original links, LaTeX-Feld rechts, Sofort-Speichern) | CI-Build gruen; vom Nutzer manuell geprueft: Start, Stiftschreiben, Speichern-Button |
 | C#-Speicherschicht (gleiches SQLite-Schema) + xUnit-Tests | Implementiert; xUnit-Tests laufen in der CI |
-| Stiftspezifisch: Neigung, Palm Rejection, Radierer, Lasso, Farben | Noch nicht implementiert |
+| Radierer (Strich-Radierer, Stift-Radierende), Rueckgaengig, Alles loeschen (Soft-Delete, Original bleibt, wiederherstellbar) | Implementiert; Speicher-/Geometrie-Logik getestet (Python lokal, C# in CI), Bedienung ungetestet |
+| Neigung, Palm Rejection, Lasso, Farben, Strichstaerken | Noch nicht implementiert |
 | Gerenderte Formelvorschau (KaTeX 0.16.11 offline in WebView2) | Implementiert; KaTeX-Rendering per node getestet, WebView2-Anbindung noch ungetestet |
 | Windows-Installer, Portable Version | Noch nicht implementiert |
 | Windows-CI (Python-Tests, C#-Tests, App-Publish als portable Version) | Vorbereitet, **noch nie gelaufen** |
