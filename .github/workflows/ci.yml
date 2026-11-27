@@ -12,9 +12,11 @@ jobs:
         with: { python-version: "3.12" }
       - name: TeX Live (Linux)
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y texlive-latex-base texlive-latex-recommended texlive-fonts-recommended
+        run: sudo apt-get update && sudo apt-get install -y texlive-latex-base texlive-latex-recommended texlive-fonts-recommended texlive-pictures
       - run: pip install pytest pillow && pip install -e .
       - run: pytest -q
+      - name: JavaScript-Tests (Funktionsgraphen)
+        run: node --test tests/js/plot.test.js
 
   windows-app:
     runs-on: windows-latest

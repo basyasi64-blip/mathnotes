@@ -43,3 +43,14 @@
 
 Nachtrag v0.8.1: Praesentationsfenster zeigt nur erkannte/korrigierte Inhalte (keine Nummern, keine Handschrift, keine Platzhalter);
 aufeinanderfolgende Text-Bloecke einer Zeile werden zu einer Textzeile verbunden (Test in der CI).
+
+## v0.9: scrollende Seite, Textformate, Funktionsgraphen (TikZ)
+| Funktion | Status |
+|---|---|
+| Seite rueckt nach oben, wenn unten geschrieben wird (ab 82 % der Hoehe um 45 %); Mausrad und Pfeil-Knoepfe zum Blaettern; Striche in Seitenkoordinaten | Implementiert, **ungetestet** (nur in der CI kompiliert) |
+| Textformat pro Block: Groesse (70-200 %), fett, kursiv, unterstrichen; Groesse auch fuer Formeln/Graphen; wirkt in Arbeitsliste und Praesentation | Speicherlogik getestet (C# in der CI); Darstellung ungetestet |
+| Blocktyp Graph: Funktion handschriftlich schreiben (wie eine Formel erkannt), Koordinatensystem mit Kurve wird gezeichnet; mehrere Funktionen mit Komma; Achsenbereiche einstellbar (leer = automatisch) | Parser/Auswertung/Zeichnung/Bereiche: 7 JS-Tests + Bildkontrolle (Tangens, 1/x, Glockenkurve u. a.); Anbindung an die App ungetestet |
+| TikZ/pgfplots-Code kopieren (Zwischenablage) | Code-Erzeugung getestet: 8 Beispielfunktionen werden mit echtem LaTeX (pdflatex + pgfplots) kompiliert; Zwischenablage-Knopf ungetestet |
+| Freihand-Skizzen zu TikZ/Vektorgrafik erkennen (Geometrie, Schaltungen, Skizzen) | Noch nicht implementiert |
+| Export (PDF/LaTeX) kennt Text, Graph, Ausrichtung, Format | Noch nicht implementiert |
+Bekannte Grenzen des Graph-Parsers: nur Funktionen y=f(x) mit Variable x (keine impliziten Kurven, keine Parameter wie a, b); Ableitungen, Summen, Integrale werden nicht ausgewertet.

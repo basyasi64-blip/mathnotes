@@ -11,6 +11,7 @@ public static class LectureBuilder
         var rows = new JsonArray();
         JsonArray? current = null;
         JsonObject? last = null;
+        BlockProps? lastProps = null;
         var lastRow = int.MinValue;
         for (var i = 0; i < groups.Count && i < formulas.Count; i++)
         {
@@ -22,6 +23,7 @@ public static class LectureBuilder
                 rows.Add(new JsonObject { ["blocks"] = current });
                 lastRow = g.Row;
                 last = null;
+                lastProps = null;
             }
             var content = f.CurrentLatex ?? "";
             var align = BlockAlignment.Resolve(f.Align, g.Box, pageWidth);
@@ -31,6 +33,7 @@ public static class LectureBuilder
             if (last is not null && !pending && f.Kind == "text" &&
                 last["kind"]!.GetValue<string>() == "text" &&
                 last["align"]!.GetValue<string>() == align &&
+                lastProps == f.Props &&
                 !last["pending"]!.GetValue<bool>())
             {
                 last["content"] = last["content"]!.GetValue<string>() + " " + content;
@@ -43,7 +46,9 @@ public static class LectureBuilder
                 ["align"] = align,
                 ["content"] = content,
                 ["pending"] = pending,
+                ["props"] = f.Props.ToNode(),
             };
+            lastProps = f.Props;
             current.Add(last);
         }
         return new JsonObject { ["scale"] = scale, ["rows"] = rows }.ToJsonString();

@@ -13,8 +13,10 @@ public sealed record StrokeData(string Color, double Width, IReadOnlyList<PointD
 public sealed record FormulaRecord(
     long Id, IReadOnlyList<long> StrokeIds, string? RecognizedLatex, string? EditedLatex,
     IReadOnlyList<long>? RecognizedIds, IReadOnlyList<string> Alternatives,
-    string Kind = "formula", string? Align = null)
+    string Kind = "formula", string? Align = null, string? PropsJson = null)
 {
+    public BlockProps Props => BlockProps.Parse(PropsJson);
+
     /// <summary>Bei Kind="text" enthalten Recognized/Edited normalen Text statt LaTeX.</summary>
     /// <summary>Vom Nutzer bestaetigter Text hat Vorrang vor dem Erkenner-Ergebnis.</summary>
     public string? CurrentLatex => EditedLatex ?? RecognizedLatex;
@@ -78,6 +80,7 @@ CREATE TRIGGER IF NOT EXISTS strokes_no_delete BEFORE DELETE ON strokes
         if (!cols.Contains("recognized_ids")) Exec("ALTER TABLE formulas ADD COLUMN recognized_ids TEXT");
         if (!cols.Contains("kind")) Exec("ALTER TABLE formulas ADD COLUMN kind TEXT NOT NULL DEFAULT 'formula'");
         if (!cols.Contains("align")) Exec("ALTER TABLE formulas ADD COLUMN align TEXT");
+        if (!cols.Contains("props")) Exec("ALTER TABLE formulas ADD COLUMN props TEXT");
     }
 
     private long Exec(string sql, params (string, object?)[] args)
@@ -167,10 +170,11 @@ CREATE TRIGGER IF NOT EXISTS strokes_no_delete BEFORE DELETE ON strokes
             ? new List<string>()
             : JsonNode.Parse(r.GetString(5))!.AsArray().Select(a => a!["latex"]!.GetValue<string>()).ToList(),
         r.GetString(6),
-        r.IsDBNull(7) ? null : r.GetString(7));
+        r.IsDBNull(7) ? null : r.GetString(7),
+        r.IsDBNull(8) ? null : r.GetString(8));
 
     private const string FormulaColumns =
-        "SELECT id, stroke_ids, recognized_latex, edited_latex, recognized_ids, alternatives, kind, align FROM formulas";
+        "SELECT id, stroke_ids, recognized_latex, edited_latex, recognized_ids, alternatives, kind, align, props FROM formulas";
 
     public List<FormulaRecord> Formulas(long pageId)
     {
@@ -271,14 +275,30 @@ CREATE TRIGGER IF NOT EXISTS strokes_no_delete BEFORE DELETE ON strokes
     /// </summary>
     public void SetKind(long formulaId, string kind)
     {
-        if (kind is not ("formula" or "text")) throw new ArgumentException("Typ muss formula oder text sein");
+        if (kind is not ("formula" or "text" or "graph")) throw new ArgumentException("Typ muss formula, text oder graph sein");
         var cur = GetFormula(formulaId) ?? throw new KeyNotFoundException($"Formel {formulaId}");
         if (cur.Kind == kind) return;
         using var tx = _db.BeginTransaction();
-        Exec("UPDATE formulas SET kind=$k, recognized_latex=NULL, edited_latex=NULL, confidence=NULL, alternatives='[]', engine=NULL, recognized_ids=NULL WHERE id=$f",
-             ("$k", kind), ("$f", formulaId));
+        if ((cur.Kind == "text") == (kind == "text"))
+        {
+            // Formel <-> Graph: beides ist LaTeX, Inhalt und Erkennung bleiben erhalten
+            Exec("UPDATE formulas SET kind=$k WHERE id=$f", ("$k", kind), ("$f", formulaId));
+        }
+        else
+        {
+            Exec("UPDATE formulas SET kind=$k, recognized_latex=NULL, edited_latex=NULL, confidence=NULL, alternatives='[]', engine=NULL, recognized_ids=NULL WHERE id=$f",
+                 ("$k", kind), ("$f", formulaId));
+        }
         Exec("INSERT INTO formula_versions(formula_id,latex,source) VALUES($f,NULL,$s)", ("$f", formulaId), ("$s", "kind:" + kind));
         tx.Commit();
+    }
+
+    /// <summary>Speichert Darstellungs-Eigenschaften (Groesse, fett, kursiv, unterstrichen, Achsenbereiche).</summary>
+    public void SetProps(long formulaId, BlockProps props)
+    {
+        if (Scalar<long?>("SELECT id FROM formulas WHERE id=$f", ("$f", formulaId)) is null)
+            throw new KeyNotFoundException($"Formel {formulaId}");
+        Exec("UPDATE formulas SET props=$p WHERE id=$f", ("$p", props.ToJson()), ("$f", formulaId));
     }
 
     /// <summary>align: null = automatisch (aus der Schreibposition), sonst left/center/right.</summary>

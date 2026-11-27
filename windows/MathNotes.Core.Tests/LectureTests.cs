@@ -109,4 +109,62 @@ public class LectureTests
         Assert.Equal("Wir fangen mit einer", blocks[0]!["content"]!.GetValue<string>());
         Assert.Equal("x^2", blocks[1]!["content"]!.GetValue<string>());
     }
+
+    [Fact]
+    public void Props_Roundtrip_und_Standard_wird_nicht_gespeichert()
+    {
+        Assert.Null(new BlockProps().ToJson());
+        var p = new BlockProps(1.6, true, false, true, -2, 2, null, 10);
+        var back = BlockProps.Parse(p.ToJson());
+        Assert.Equal(p, back);
+        Assert.Equal(new BlockProps(), BlockProps.Parse(null));
+        Assert.Equal(new BlockProps(), BlockProps.Parse("{kaputt"));
+        Assert.Equal(1.0, BlockProps.Parse("{\"scale\":99}").Scale);          // unsinnige Groesse -> normal
+    }
+
+    [Fact]
+    public void Props_werden_gespeichert_und_in_der_Vorlesung_geliefert()
+    {
+        using var s = new NotebookStore(TempDb());
+        var page = s.FirstPage(s.CreateNotebook("x"));
+        var f = s.SyncFormulas(page, G(new long[] { 1 }), "text")[0];
+        s.EditFormula(f.Id, "Wichtig");
+        s.SetProps(f.Id, new BlockProps(1.6, true, true, true));
+        Assert.Equal(new BlockProps(1.6, true, true, true), s.GetFormula(f.Id)!.Props);
+        var groups = new List<StrokeGroup> { new(new long[] { 1 }, Box(10, 100), 0) };
+        var block = JsonNode.Parse(LectureBuilder.Build(groups, s.Formulas(page), 900, 1))!["rows"]![0]!["blocks"]![0]!;
+        Assert.Equal(1.6, block["props"]!["scale"]!.GetValue<double>());
+        Assert.True(block["props"]!["bold"]!.GetValue<bool>());
+        Assert.True(block["props"]!["underline"]!.GetValue<bool>());
+    }
+
+    [Fact]
+    public void Text_mit_unterschiedlichem_Format_wird_nicht_verbunden()
+    {
+        using var s = new NotebookStore(TempDb());
+        var page = s.FirstPage(s.CreateNotebook("x"));
+        var r = s.SyncFormulas(page, G(new long[] { 1 }, new long[] { 2 }), "text");
+        s.EditFormula(r[0].Id, "Normal");
+        s.EditFormula(r[1].Id, "Fett");
+        s.SetProps(r[1].Id, new BlockProps(Bold: true));
+        var groups = new List<StrokeGroup> { new(new long[] { 1 }, Box(10, 100), 0), new(new long[] { 2 }, Box(120, 200), 0) };
+        var blocks = JsonNode.Parse(LectureBuilder.Build(groups, s.Formulas(page), 900, 1))!["rows"]![0]!["blocks"]!.AsArray();
+        Assert.Equal(2, blocks.Count);
+    }
+
+    [Fact]
+    public void Graph_Typ_behaelt_LaTeX_beim_Wechsel_von_Formel_Text_leert()
+    {
+        using var s = new NotebookStore(TempDb());
+        var page = s.FirstPage(s.CreateNotebook("x"));
+        var f = s.SyncFormulas(page, G(new long[] { 1 }), "formula")[0];
+        s.EditFormula(f.Id, "f(x)=x^2");
+        s.SetKind(f.Id, "graph");
+        var g = s.GetFormula(f.Id)!;
+        Assert.Equal("graph", g.Kind);
+        Assert.Equal("f(x)=x^2", g.EditedLatex);                  // Funktion bleibt erhalten
+        s.SetKind(f.Id, "text");
+        Assert.Null(s.GetFormula(f.Id)!.EditedLatex);              // LaTeX ist als Text sinnlos -> leeren
+        Assert.Equal("graph", s.SyncFormulas(page, G(new long[] { 5 }), "graph")[0].Kind);
+    }
 }

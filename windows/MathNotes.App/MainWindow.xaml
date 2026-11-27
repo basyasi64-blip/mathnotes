@@ -18,10 +18,13 @@
             <ComboBox x:Name="ModeBox" SelectedIndex="0" Width="190">
                 <ComboBoxItem Content="Schreibmodus: Formel" />
                 <ComboBoxItem Content="Schreibmodus: Text" />
+                <ComboBoxItem Content="Schreibmodus: Graph" />
             </ComboBox>
             <ToggleButton x:Name="EraserToggle" Content="Radierer" />
             <Button Content="R&#252;ckg&#228;ngig" Click="OnUndo" />
             <Button Content="Alles l&#246;schen" Click="OnClearAll" />
+            <Button Content="&#8593;" Click="OnScrollUp" ToolTipService.ToolTip="Seite zur&#252;ckbl&#228;ttern (auch Mausrad)" />
+            <Button Content="&#8595;" Click="OnScrollDown" ToolTipService.ToolTip="Seite weiterbl&#228;ttern (auch Mausrad)" />
         </StackPanel>
 
         <StackPanel Grid.Row="0" Grid.Column="1" Spacing="4">
@@ -40,10 +43,11 @@
         </StackPanel>
 
         <Border Grid.Row="1" Grid.Column="0" BorderBrush="Gray" BorderThickness="1">
-            <Grid>
-                <Canvas x:Name="InkSurface" Background="White"
-                        PointerPressed="OnPointerPressed" PointerMoved="OnPointerMoved"
-                        PointerReleased="OnPointerReleased" PointerCanceled="OnPointerReleased" />
+            <Grid x:Name="Viewport" Background="White" SizeChanged="OnViewportSizeChanged"
+                  PointerPressed="OnPointerPressed" PointerMoved="OnPointerMoved"
+                  PointerReleased="OnPointerReleased" PointerCanceled="OnPointerReleased"
+                  PointerWheelChanged="OnWheel">
+                <Canvas x:Name="InkSurface" IsHitTestVisible="False" />
                 <Canvas x:Name="OverlaySurface" IsHitTestVisible="False" />
             </Grid>
         </Border>
@@ -56,16 +60,20 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
             <Border BorderBrush="Gray" BorderThickness="1">
                 <WebView2 x:Name="Preview" />
             </Border>
             <TextBlock x:Name="SelectedLabel" Grid.Row="1" FontWeight="SemiBold"
                        Text="Kein Block gew&#228;hlt (in der Liste oben anklicken)" />
+
             <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="8">
                 <ComboBox x:Name="KindBox" IsEnabled="False" Width="130" SelectionChanged="OnKindChanged">
                     <ComboBoxItem Content="Formel" />
                     <ComboBoxItem Content="Text" />
+                    <ComboBoxItem Content="Graph" />
                 </ComboBox>
                 <ComboBox x:Name="AlignBox" IsEnabled="False" Width="210" SelectionChanged="OnAlignChanged">
                     <ComboBoxItem Content="Ausrichtung: automatisch" />
@@ -74,12 +82,41 @@
                     <ComboBoxItem Content="Ausrichtung: rechts" />
                 </ComboBox>
             </StackPanel>
-            <TextBox x:Name="LatexBox" Grid.Row="3" AcceptsReturn="True" TextWrapping="Wrap" Height="96"
+
+            <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="8">
+                <ComboBox x:Name="SizeBox" IsEnabled="False" Width="150" SelectionChanged="OnSizeChanged">
+                    <ComboBoxItem Content="Gr&#246;&#223;e: 70 %" />
+                    <ComboBoxItem Content="Gr&#246;&#223;e: 85 %" />
+                    <ComboBoxItem Content="Gr&#246;&#223;e: 100 %" />
+                    <ComboBoxItem Content="Gr&#246;&#223;e: 130 %" />
+                    <ComboBoxItem Content="Gr&#246;&#223;e: 160 %" />
+                    <ComboBoxItem Content="Gr&#246;&#223;e: 200 %" />
+                </ComboBox>
+                <ToggleButton x:Name="BoldToggle" IsEnabled="False" Click="OnBoldClick" ToolTipService.ToolTip="fett (nur Text)">
+                    <TextBlock Text="F" FontWeight="Bold" />
+                </ToggleButton>
+                <ToggleButton x:Name="ItalicToggle" IsEnabled="False" Click="OnItalicClick" ToolTipService.ToolTip="kursiv (nur Text)">
+                    <TextBlock Text="K" FontStyle="Italic" />
+                </ToggleButton>
+                <ToggleButton x:Name="UnderlineToggle" IsEnabled="False" Click="OnUnderlineClick" ToolTipService.ToolTip="unterstrichen (nur Text)">
+                    <TextBlock Text="U" TextDecorations="Underline" />
+                </ToggleButton>
+            </StackPanel>
+
+            <StackPanel x:Name="GraphPanel" Grid.Row="4" Orientation="Horizontal" Spacing="6" Visibility="Collapsed">
+                <TextBox x:Name="XMinBox" Header="x min" PlaceholderText="auto" Width="70" LostFocus="OnRangeChanged" />
+                <TextBox x:Name="XMaxBox" Header="x max" PlaceholderText="auto" Width="70" LostFocus="OnRangeChanged" />
+                <TextBox x:Name="YMinBox" Header="y min" PlaceholderText="auto" Width="70" LostFocus="OnRangeChanged" />
+                <TextBox x:Name="YMaxBox" Header="y max" PlaceholderText="auto" Width="70" LostFocus="OnRangeChanged" />
+                <Button Content="TikZ kopieren" VerticalAlignment="Bottom" Click="OnCopyTikz" />
+            </StackPanel>
+
+            <TextBox x:Name="LatexBox" Grid.Row="5" AcceptsReturn="True" TextWrapping="Wrap" Height="96"
                      FontFamily="Consolas" IsEnabled="False" TextChanged="OnLatexChanged"
                      PlaceholderText="Inhalt des gew&#228;hlten Blocks" />
-            <ComboBox x:Name="CandidateBox" Grid.Row="4" Header="Weitere Vorschl&#228;ge" Visibility="Collapsed"
+            <ComboBox x:Name="CandidateBox" Grid.Row="6" Header="Weitere Vorschl&#228;ge" Visibility="Collapsed"
                       HorizontalAlignment="Stretch" SelectionChanged="OnCandidateChanged" />
-            <Button x:Name="SaveButton" Grid.Row="5" Content="Korrektur speichern" Click="OnSaveFormula"
+            <Button x:Name="SaveButton" Grid.Row="7" Content="Korrektur speichern" Click="OnSaveFormula"
                     IsEnabled="False" />
         </Grid>
 

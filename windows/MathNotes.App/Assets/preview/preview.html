@@ -2,6 +2,7 @@
 <html><head><meta charset="utf-8">
 <link rel="stylesheet" href="katex/katex.min.css">
 <script src="katex/katex.min.js"></script>
+<script src="plot.js"></script>
 <style>
   body { font-family: "Segoe UI", sans-serif; margin: 8px; background: #fff; color: #111; }
   .item { border: 1px solid #ccc; border-radius: 6px; padding: 6px 10px; margin: 6px 0; cursor: pointer; }
@@ -22,10 +23,17 @@ function renderAll(items){
   if(!items.length){ o.innerHTML = '<div class="empty">Schreibe links eine Formel. Gefundene Formeln erscheinen hier.</div>'; return; }
   items.forEach(function(it){
     var d = document.createElement('div'); d.className = 'item' + (it.selected ? ' sel' : '');
-    var m = document.createElement('div'); m.className = 'meta'; m.textContent = (it.kind === 'text' ? 'Text ' : 'Formel ') + it.n + ' \u00b7 ' + it.state + ' \u00b7 ' + ({left:'links',center:'Mitte',right:'rechts'}[it.align] || ''); d.appendChild(m);
+    var m = document.createElement('div'); m.className = 'meta'; m.textContent = (it.kind === 'text' ? 'Text ' : it.kind === 'graph' ? 'Graph ' : 'Formel ') + it.n + ' \u00b7 ' + it.state + ' \u00b7 ' + ({left:'links',center:'Mitte',right:'rechts'}[it.align] || ''); d.appendChild(m);
     var t = document.createElement('div'); t.className = 'tex'; d.appendChild(t);
     if(!it.latex || !it.latex.trim()){ t.innerHTML = '<span class="empty">(noch kein Inhalt)</span>'; }
-    else if(it.kind === 'text'){ t.style.whiteSpace = 'pre-wrap'; t.style.fontSize = '1em'; t.textContent = it.latex; }
+    else if(it.kind === 'text'){
+      var pr = it.props || {};
+      t.style.whiteSpace = 'pre-wrap'; t.style.fontSize = (pr.scale || 1) + 'em'; t.textContent = it.latex;
+      if (pr.bold) t.style.fontWeight = '700';
+      if (pr.italic) t.style.fontStyle = 'italic';
+      if (pr.underline) t.style.textDecoration = 'underline';
+    }
+    else if(it.kind === 'graph'){ t.style.maxWidth = '420px'; t.style.margin = '0 auto'; renderGraph(t, it.latex, it.props || {}); }
     else {
       try { katex.render(it.latex, t, {displayMode:true, throwOnError:true}); }
       catch(e){ t.innerHTML = '<div class="err">LaTeX-Fehler: ' + esc(e.message) + '</div>'; }

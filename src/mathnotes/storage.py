@@ -64,6 +64,8 @@ class Store:
             self.db.execute("ALTER TABLE formulas ADD COLUMN kind TEXT NOT NULL DEFAULT 'formula'")
         if "align" not in cols:            # NULL = automatisch aus der Schreibposition, sonst left/center/right
             self.db.execute("ALTER TABLE formulas ADD COLUMN align TEXT")
+        if "props" not in cols:            # JSON: Groesse/fett/kursiv/unterstrichen/Achsenbereiche (siehe BlockProps.cs)
+            self.db.execute("ALTER TABLE formulas ADD COLUMN props TEXT")
 
     def close(self) -> None:
         self.db.close()

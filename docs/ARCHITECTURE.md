@@ -72,3 +72,13 @@ freiwillig zuschaltbarer Online-Dienst mit ausdruecklicher Zustimmung (widerspri
 - `StrokeGroup.Row` (Zeilenindex) -> `LectureBuilder` erzeugt Zeilen/Bloecke als JSON -> `lecture.html` (KaTeX) im `PresentationWindow`.
   Zeilen mit einheitlicher Ausrichtung fliessen in einer Reihe; gemischte Ausrichtung nutzt drei Zellen (links/Mitte/rechts).
 - Die Praesentation zeigt gespeicherten Inhalt (erkannt oder korrigiert), keine ungespeicherten Entwuerfe. Unerkannte Bloecke erscheinen blass als '...'.
+
+## v0.9: Scrollen, Formate, Graphen
+- Schreibflaeche: `Viewport` (fest, mit Clip) enthaelt `InkSurface`/`OverlaySurface` mit gemeinsamer `TranslateTransform`. Pointer-Positionen werden
+  als Seitenkoordinaten (y + Scroll) gespeichert, nicht ueber Transform-Rechnung. Automatisches Weiterrucken beim Loslassen eines Strichs
+  nahe dem unteren Rand; Mausrad/Knoepfe scrollen bis (unterster Strich + 60 % Fensterhoehe).
+- `formulas.props` (JSON, `BlockProps`): scale, bold, italic, underline, xmin/xmax/ymin/ymax. Nur Abweichungen vom Standard werden gespeichert.
+- Blocktyp `graph`: wie `formula` erkannt (TexTeller), Anzeige als Funktionsgraph. Wechsel formula<->graph behaelt den LaTeX-Inhalt; Wechsel von/zu `text` leert ihn (Verlauf bleibt).
+- `Assets/preview/plot.js`: ein Parser (LaTeX -> AST) fuer Auswertung, SVG-Zeichnung und pgfplots-Ausgabe, damit Anzeige und TikZ dasselbe meinen.
+  Polstellen/Sprung: Linie wird unterbrochen; TikZ nutzt `unbounded coords=jump`, `restrict y to domain`, `trig format plots=rad`.
+- Tests: `tests/js/plot.test.js` (Node), `tests/test_tikz.py` kompiliert erzeugten TikZ-Code mit pdflatex (wird ohne Node/pgfplots uebersprungen).
