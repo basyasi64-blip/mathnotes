@@ -22,9 +22,10 @@ function renderAll(items){
   if(!items.length){ o.innerHTML = '<div class="empty">Schreibe links eine Formel. Gefundene Formeln erscheinen hier.</div>'; return; }
   items.forEach(function(it){
     var d = document.createElement('div'); d.className = 'item' + (it.selected ? ' sel' : '');
-    var m = document.createElement('div'); m.className = 'meta'; m.textContent = 'Formel ' + it.n + ' \u00b7 ' + it.state; d.appendChild(m);
+    var m = document.createElement('div'); m.className = 'meta'; m.textContent = (it.kind === 'text' ? 'Text ' : 'Formel ') + it.n + ' \u00b7 ' + it.state + ' \u00b7 ' + ({left:'links',center:'Mitte',right:'rechts'}[it.align] || ''); d.appendChild(m);
     var t = document.createElement('div'); t.className = 'tex'; d.appendChild(t);
-    if(!it.latex || !it.latex.trim()){ t.innerHTML = '<span class="empty">(noch keine Formel)</span>'; }
+    if(!it.latex || !it.latex.trim()){ t.innerHTML = '<span class="empty">(noch kein Inhalt)</span>'; }
+    else if(it.kind === 'text'){ t.style.whiteSpace = 'pre-wrap'; t.style.fontSize = '1em'; t.textContent = it.latex; }
     else {
       try { katex.render(it.latex, t, {displayMode:true, throwOnError:true}); }
       catch(e){ t.innerHTML = '<div class="err">LaTeX-Fehler: ' + esc(e.message) + '</div>'; }

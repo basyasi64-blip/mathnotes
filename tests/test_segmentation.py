@@ -58,3 +58,9 @@ def test_zeichengroesse_skaliert_mit_schrift():
     # kleine Schrift: dieselbe Luecke trennt
     items = [(1, box(0, 0, 20, 20)), (2, box(120, 0, 20, 20))]
     assert ids(group_strokes(items)) == [[1], [2]]
+
+
+def test_zeilenindex_fuer_nebeneinander_und_untereinander():
+    items = [(1, box(0, 0, 40, 40)), (2, box(300, 3, 40, 40)), (3, box(0, 120, 40, 40))]
+    groups = group_strokes(items)
+    assert [(list(g.ids), g.row) for g in groups] == [([1], 0), ([2], 0), ([3], 1)]

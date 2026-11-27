@@ -60,3 +60,15 @@ freiwillig zuschaltbarer Online-Dienst mit ausdruecklicher Zustimmung (widerspri
   Fehlgeschlagene Erkennungen werden fuer dieselben Striche nicht automatisch wiederholt ('Jetzt erkennen' setzt das zurueck).
 - Ergebnisse sind immer 'ungeprueft'. Eine Korrektur des Nutzers (`edited_latex`) wird nie ueberschrieben; sie bleibt auch,
   wenn spaeter Striche zur Formel hinzukommen (dann kann sie veraltet sein; es gibt dafuer noch keine Warnung).
+
+## v0.8: Bloecke (Formel/Text), Ausrichtung, Praesentation
+- Tabelle `formulas` bekommt `kind` ('formula'|'text', Standard 'formula') und `align` (NULL = automatisch, sonst left/center/right).
+  Bei kind='text' enthalten `recognized_latex`/`edited_latex` normalen Text (Spaltennamen historisch). Migration beim Oeffnen.
+- Schreibmodus-Auswahl bestimmt den Typ NEUER Bloecke (`SyncFormulas(..., defaultKind)`); vorhandene behalten ihren Typ.
+- Text: `InkTextRecognizer` (App, Windows.UI.Input.Inking, bevorzugt 'Microsoft-Handschrifterkennung - Deutsch'); Woerter werden zeilenweise
+  geordnet; Alternative = jeweils zweitbester Kandidat. Formeln: weiterhin TexTeller im Dauerprozess.
+- Ausrichtung automatisch: Mitte des Blocks im linken Drittel der Seitenbreite = links, rechtes Drittel = rechts, sonst Mitte
+  (`BlockAlignment`). Manuelle Wahl hat Vorrang.
+- `StrokeGroup.Row` (Zeilenindex) -> `LectureBuilder` erzeugt Zeilen/Bloecke als JSON -> `lecture.html` (KaTeX) im `PresentationWindow`.
+  Zeilen mit einheitlicher Ausrichtung fliessen in einer Reihe; gemischte Ausrichtung nutzt drei Zellen (links/Mitte/rechts).
+- Die Praesentation zeigt gespeicherten Inhalt (erkannt oder korrigiert), keine ungespeicherten Entwuerfe. Unerkannte Bloecke erscheinen blass als '...'.

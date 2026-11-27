@@ -5,7 +5,8 @@ public sealed record StrokeBox(double MinX, double MinY, double MaxX, double Max
     public double CenterY => (MinY + MaxY) / 2;
 }
 
-public sealed record StrokeGroup(IReadOnlyList<long> Ids, StrokeBox Box);
+/// <summary>Row = Zeilenindex in Lesereihenfolge; Gruppen mit gleichem Index stehen nebeneinander.</summary>
+public sealed record StrokeGroup(IReadOnlyList<long> Ids, StrokeBox Box, int Row = 0);
 
 /// <summary>
 /// Gruppiert Striche zu Formeln (neben- und untereinander). Identisch zur Python-Referenz
@@ -89,6 +90,6 @@ public static class StrokeGrouping
             else
                 rows.Add(new List<StrokeGroup> { g });
         }
-        return rows.SelectMany(row => row.OrderBy(g => g.Box.MinX)).ToList();
+        return rows.SelectMany((row, r) => row.OrderBy(g => g.Box.MinX).Select(g => g with { Row = r })).ToList();
     }
 }

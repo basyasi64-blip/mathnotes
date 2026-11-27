@@ -1,0 +1,64 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<link rel="stylesheet" href="katex/katex.min.css">
+<script src="katex/katex.min.js"></script>
+<style>
+  html, body { margin: 0; height: 100%; background: #fff; color: #111; font-family: "Segoe UI", sans-serif; }
+  #page { box-sizing: border-box; min-height: 100%; padding: 3vh 4vw; font-size: 3.2vw; }
+  .row { margin: 1.4vh 0; }
+  .row.same { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6em 2.5vw; }
+  .row.same.left { justify-content: flex-start; }
+  .row.same.center { justify-content: center; }
+  .row.same.right { justify-content: flex-end; }
+  .row.mixed { display: flex; align-items: center; gap: 2vw; }
+  .row.mixed .l { flex: 1 1 0; text-align: left; display: flex; flex-wrap: wrap; gap: .4em 2vw; justify-content: flex-start; }
+  .row.mixed .c { flex: 0 1 auto; text-align: center; display: flex; flex-wrap: wrap; gap: .4em 2vw; justify-content: center; }
+  .row.mixed .r { flex: 1 1 0; text-align: right; display: flex; flex-wrap: wrap; gap: .4em 2vw; justify-content: flex-end; }
+  .block { max-width: 100%; }
+  .block.text { font-size: .8em; line-height: 1.3; white-space: pre-wrap; text-align: left; }
+  .block.pending { opacity: .25; }
+  .katex-display { margin: 0; }
+  .err { color: #b00020; font-size: .4em; font-family: Consolas, monospace; white-space: pre-wrap; }
+  #hint { opacity: .35; font-size: .6em; }
+</style></head>
+<body><div id="page"></div>
+<script>
+function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
+function makeBlock(b){
+  var d = document.createElement('div');
+  d.className = 'block ' + (b.kind === 'text' ? 'text' : 'formula') + (b.pending ? ' pending' : '');
+  if (b.pending) { d.textContent = '\u2026'; return d; }
+  if (b.kind === 'text') { d.textContent = b.content; return d; }
+  try { katex.render(b.content, d, {displayMode: true, throwOnError: true}); }
+  catch(e){ d.innerHTML = '<div class="err">LaTeX-Fehler: ' + esc(e.message) + '</div>'; }
+  return d;
+}
+function setLecture(data){
+  var page = document.getElementById('page');
+  page.style.fontSize = (3.2 * (data.scale || 1)) + 'vw';
+  page.innerHTML = '';
+  data.rows.forEach(function(row){
+    // Fuer das Publikum: nur fertig erkannte oder korrigierte Inhalte, keine Platzhalter
+    row = {blocks: row.blocks.filter(function(b){ return !b.pending; })};
+    if (!row.blocks.length) return;
+    var aligns = {};
+    row.blocks.forEach(function(b){ aligns[b.align] = true; });
+    var keys = Object.keys(aligns);
+    var r = document.createElement('div');
+    if (keys.length === 1) {
+      r.className = 'row same ' + keys[0];
+      row.blocks.forEach(function(b){ r.appendChild(makeBlock(b)); });
+    } else {
+      r.className = 'row mixed';
+      var cells = {left: document.createElement('div'), center: document.createElement('div'), right: document.createElement('div')};
+      cells.left.className = 'l'; cells.center.className = 'c'; cells.right.className = 'r';
+      row.blocks.forEach(function(b){ cells[b.align].appendChild(makeBlock(b)); });
+      r.appendChild(cells.left); r.appendChild(cells.center); r.appendChild(cells.right);
+    }
+    page.appendChild(r);
+  });
+}
+document.addEventListener('keydown', function(e){
+  if (e.key === 'F11' || e.key === 'Escape') { e.preventDefault(); window.chrome.webview.postMessage('key:' + e.key); }
+});
+</script></body></html>

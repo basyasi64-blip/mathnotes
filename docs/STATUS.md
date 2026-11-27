@@ -31,3 +31,15 @@
 | Formelliste mit gerenderter Vorschau, Auswahl, Korrektur, Kandidaten; gestrichelte Rahmen mit Nummern auf der Schreibflaeche | Implementiert, **ungetestet** (C#/WinUI nur in der CI kompiliert) |
 | PDF/LaTeX-Export: sichtbare Formeln in Lesereihenfolge | Python getestet; der Export ist weiterhin nur per Kommandozeile erreichbar, nicht aus der App |
 | Schreibflaeche = sichtbarer Fensterbereich (App startet maximiert); kein Scrollen/Zoomen | Bekannte Einschraenkung |
+
+## v0.8: Text, Ausrichtung, Praesentation
+| Funktion | Status |
+|---|---|
+| Blocktyp Formel/Text (Schreibmodus fuer neue Bloecke, Typ pro Block aenderbar; Typwechsel leert den Inhalt, Verlauf bleibt) | Speicherlogik getestet (C#-Tests laufen in der CI); Bedienung ungetestet |
+| Normaler Text: Windows-Handschrifterkennung (Deutsch bevorzugt), lokal, ohne Einrichtung | Implementiert nach Windows-API-Dokumentation, **nie ausgefuehrt, Genauigkeit unbekannt** |
+| Ausrichtung links/Mitte/rechts: automatisch aus der Schreibposition (Drittel der Seitenbreite), pro Block von Hand aenderbar | Logik getestet (CI); Bedienung ungetestet |
+| Praesentationsfenster (gesetzte Seite, gross, live; mehrere Bloecke je Zeile mit gemischter Ausrichtung; Schriftgroesse A-/A+; Vollbild per Knopf oder F11) | Datenaufbau getestet (CI); Darstellung/Fenster **ungetestet** |
+| PDF/LaTeX-Export beruecksichtigt Text-Bloecke und Ausrichtung | Noch nicht implementiert (Export ist ohnehin nur per Kommandozeile erreichbar) |
+
+Nachtrag v0.8.1: Praesentationsfenster zeigt nur erkannte/korrigierte Inhalte (keine Nummern, keine Handschrift, keine Platzhalter);
+aufeinanderfolgende Text-Bloecke einer Zeile werden zu einer Textzeile verbunden (Test in der CI).

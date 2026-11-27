@@ -47,6 +47,10 @@ public sealed partial class MainWindow : Window
     private readonly Dictionary<long, string> _states = new();
     private readonly HashSet<string> _failed = new();
 
+    // Praesentation
+    private PresentationWindow? _presentation;
+    private double _lectureScale = 1.0;
+
     public MainWindow()
     {
         InitializeComponent();
@@ -73,6 +77,7 @@ public sealed partial class MainWindow : Window
         Closed += (_, _) =>
         {
             _analysisTimer.Stop();
+            _presentation?.Close();
             _service.Dispose();
             _store.Dispose();
         };
@@ -114,8 +119,16 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private string DefaultKind => ModeBox.SelectedIndex == 1 ? "text" : "formula";
+
+    private Task PushLectureAsync() =>
+        _presentation is null
+            ? Task.CompletedTask
+            : _presentation.PushAsync(LectureBuilder.Build(_groups, _formulas, Math.Max(InkSurface.ActualWidth, 1), _lectureScale));
+
     private async Task RefreshPreviewAsync()
     {
+        _ = PushLectureAsync();
         if (!_previewReady) return;
         try
         {
@@ -142,6 +155,10 @@ public sealed partial class MainWindow : Window
                     ["latex"] = latex ?? "",
                     ["state"] = state,
                     ["selected"] = isSel,
+                    ["kind"] = f.Kind,
+                    ["align"] = i < _groups.Count
+                        ? BlockAlignment.Resolve(f.Align, _groups[i].Box, Math.Max(InkSurface.ActualWidth, 1))
+                        : "center",
                 });
             }
             await Preview.CoreWebView2.ExecuteScriptAsync("renderAll(" + items.ToJsonString() + ")");
@@ -169,9 +186,14 @@ public sealed partial class MainWindow : Window
     {
         _updatingUi = true;
         var idx = _formulas.FindIndex(x => x.Id == f.Id);
-        SelectedLabel.Text = $"Formel {idx + 1}" +
+        SelectedLabel.Text = $"Block {idx + 1} ({(f.Kind == "text" ? "Text" : "Formel")})" +
             (f.EditedLatex is not null ? " (von dir korrigiert)"
              : f.RecognizedLatex is not null ? " (erkannt, ungeprueft)" : "");
+        KindBox.IsEnabled = true;
+        AlignBox.IsEnabled = true;
+        KindBox.SelectedIndex = f.Kind == "text" ? 1 : 0;
+        AlignBox.SelectedIndex = f.Align switch { "left" => 1, "center" => 2, "right" => 3, _ => 0 };
+        LatexBox.PlaceholderText = f.Kind == "text" ? "Text des Blocks" : "LaTeX der gewaehlten Formel";
         LatexBox.IsEnabled = true;
         SaveButton.IsEnabled = true;
         LatexBox.Text = f.CurrentLatex ?? "";
@@ -189,7 +211,9 @@ public sealed partial class MainWindow : Window
         _updatingUi = true;
         _selectedId = null;
         _draftActive = false;
-        SelectedLabel.Text = "Keine Formel gewaehlt (in der Liste oben anklicken)";
+        SelectedLabel.Text = "Kein Block gewaehlt (in der Liste oben anklicken)";
+        KindBox.IsEnabled = false;
+        AlignBox.IsEnabled = false;
         LatexBox.Text = "";
         LatexBox.IsEnabled = false;
         SaveButton.IsEnabled = false;
@@ -211,6 +235,57 @@ public sealed partial class MainWindow : Window
     {
         if (_updatingUi || CandidateBox.SelectedItem is not string latex) return;
         LatexBox.Text = latex;
+    }
+
+    private void OnKindChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_updatingUi || _selectedId is not long id) return;
+        var kind = KindBox.SelectedIndex == 1 ? "text" : "formula";
+        var cur = _formulas.FirstOrDefault(x => x.Id == id);
+        if (cur is null || cur.Kind == kind) return;
+        _store.SetKind(id, kind);   // Inhalt wird geleert, der Verlauf bleibt erhalten
+        _failed.RemoveWhere(k => k.StartsWith(id + "|"));
+        _draftActive = false;
+        var rec = _store.GetFormula(id);
+        if (rec is not null) ReplaceFormula(rec);
+        OnStrokesChanged();
+        StatusText.Text = "Typ geaendert. Der Block wird neu erkannt.";
+    }
+
+    private async void OnAlignChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_updatingUi || _selectedId is not long id) return;
+        string? align = AlignBox.SelectedIndex switch { 1 => "left", 2 => "center", 3 => "right", _ => null };
+        _store.SetAlign(id, align);
+        var rec = _store.GetFormula(id);
+        if (rec is not null) ReplaceFormula(rec);
+        await RefreshPreviewAsync();
+    }
+
+    private async void OnOpenPresentation(object sender, RoutedEventArgs e)
+    {
+        if (_presentation is null)
+        {
+            _presentation = new PresentationWindow();
+            _presentation.Closed += (_, _) => _presentation = null;
+        }
+        _presentation.Activate();
+        await PushLectureAsync();
+        StatusText.Text = "Praesentationsfenster geoeffnet. Auf den Projektor ziehen und 'Vollbild' (oder F11) waehlen.";
+    }
+
+    private void OnToggleFullscreen(object sender, RoutedEventArgs e) => _presentation?.ToggleFullScreen();
+
+    private async void OnScaleUp(object sender, RoutedEventArgs e)
+    {
+        _lectureScale = Math.Clamp(_lectureScale + 0.1, 0.5, 2.5);
+        await PushLectureAsync();
+    }
+
+    private async void OnScaleDown(object sender, RoutedEventArgs e)
+    {
+        _lectureScale = Math.Clamp(_lectureScale - 0.1, 0.5, 2.5);
+        await PushLectureAsync();
     }
 
     private async void OnSaveFormula(object sender, RoutedEventArgs e)
@@ -291,7 +366,7 @@ public sealed partial class MainWindow : Window
         var gen = _generation;
         var visible = _store.Strokes(_page);
         _groups = StrokeGrouping.Group(visible);
-        _formulas = _store.SyncFormulas(_page, _groups.Select(g => g.Ids).ToList());
+        _formulas = _store.SyncFormulas(_page, _groups.Select(g => g.Ids).ToList(), DefaultKind);
         if (_selectedId is long sel && !_formulas.Any(f => f.Id == sel)) ClearEditor();
         DrawOverlay();
         await RefreshPreviewAsync();
@@ -310,25 +385,39 @@ public sealed partial class MainWindow : Window
         var todo = _formulas.Where(f => f.NeedsRecognition && !_failed.Contains(FailKey(f))).ToList();
         if (todo.Count == 0)
         {
-            StatusText.Text = $"{_groups.Count} Formel(n). Alles erkannt (ungeprueft). Formel in der Liste anklicken zum Pruefen oder Korrigieren.";
-            return;
-        }
-        if (!_service.IsInstalled)
-        {
-            StatusText.Text = "Die Erkennung ist noch nicht eingerichtet. Bitte 'Erkennung einrichten...' waehlen.";
+            StatusText.Text = $"{_groups.Count} Block/Bloecke. Alles erkannt (ungeprueft). Anklicken zum Pruefen oder Korrigieren.";
             return;
         }
 
         var byId = visible.ToDictionary(s => s.Id, s => s.Stroke);
+        var needsSetup = false;
         foreach (var f in todo)
         {
             if (gen != _generation) return;   // es wurde weitergeschrieben: der Timer startet eine neue Analyse
-            _states[f.Id] = "wird erkannt ...";
-            StatusText.Text = "Erkennung laeuft (lokal) ...";
-            await RefreshPreviewAsync();
-
             var strokes = f.StrokeIds.Where(byId.ContainsKey).Select(i => byId[i]).ToList();
-            var outcome = await _service.RecognizeAsync(strokes);
+
+            RecognitionOutcome outcome;
+            if (f.Kind == "text")
+            {
+                _states[f.Id] = "Text wird erkannt ...";
+                await RefreshPreviewAsync();
+                outcome = await InkTextRecognizer.RecognizeAsync(strokes);   // Windows, lokal, ohne Einrichtung
+            }
+            else if (!_service.IsInstalled)
+            {
+                needsSetup = true;
+                _failed.Add(FailKey(f));
+                _states[f.Id] = "Formel-Erkennung noch nicht eingerichtet";
+                continue;
+            }
+            else
+            {
+                _states[f.Id] = "wird erkannt ...";
+                StatusText.Text = "Erkennung laeuft (lokal) ...";
+                await RefreshPreviewAsync();
+                outcome = await _service.RecognizeAsync(strokes);
+            }
+
             if (outcome.Recognized)
             {
                 _store.SaveRecognitionFor(f.Id, f.StrokeIds, outcome);
@@ -343,7 +432,10 @@ public sealed partial class MainWindow : Window
             }
             await RefreshPreviewAsync();
         }
-        StatusText.Text = "Erkennung fertig (ungeprueft). Formel in der Liste anklicken, um sie zu pruefen oder zu korrigieren.";
+        await RefreshPreviewAsync();
+        StatusText.Text = needsSetup
+            ? "Formeln brauchen die Formel-Erkennung: bitte 'Erkennung einrichten...' waehlen. (Text funktioniert ohne Einrichtung.)"
+            : "Erkennung fertig (ungeprueft). Block in der Liste anklicken, um ihn zu pruefen oder zu korrigieren.";
     }
 
     private void DrawOverlay()

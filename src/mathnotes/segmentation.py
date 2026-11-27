@@ -7,7 +7,7 @@ Bekannte Grenzen: Matrizen mit grossem Zeilenabstand koennen in Zeilen zerfallen
 muessen mindestens ca. 0,5 Zeichenhoehen vertikal bzw. 1,5 Zeichengroessen horizontal Abstand haben.
 """
 from __future__ import annotations
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from statistics import median
 from typing import Sequence
 from .models import Stroke
@@ -34,6 +34,7 @@ class BBox:
 class Group:
     ids: tuple[int, ...]
     bbox: BBox
+    row: int = 0   # Zeilenindex in Lesereihenfolge (Gruppen mit gleichem Index stehen nebeneinander)
 
 
 def stroke_bbox(stroke: Stroke) -> BBox:
@@ -90,4 +91,4 @@ def reading_order(groups: list[Group], s: float) -> list[Group]:
             rows[-1].append(g)
         else:
             rows.append([g])
-    return [g for row in rows for g in sorted(row, key=lambda g: g.bbox.minx)]
+    return [replace(g, row=r) for r, row in enumerate(rows) for g in sorted(row, key=lambda g: g.bbox.minx)]

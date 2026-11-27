@@ -12,8 +12,10 @@ public sealed record StrokeData(string Color, double Width, IReadOnlyList<PointD
 /// </summary>
 public sealed record FormulaRecord(
     long Id, IReadOnlyList<long> StrokeIds, string? RecognizedLatex, string? EditedLatex,
-    IReadOnlyList<long>? RecognizedIds, IReadOnlyList<string> Alternatives)
+    IReadOnlyList<long>? RecognizedIds, IReadOnlyList<string> Alternatives,
+    string Kind = "formula", string? Align = null)
 {
+    /// <summary>Bei Kind="text" enthalten Recognized/Edited normalen Text statt LaTeX.</summary>
     /// <summary>Vom Nutzer bestaetigter Text hat Vorrang vor dem Erkenner-Ergebnis.</summary>
     public string? CurrentLatex => EditedLatex ?? RecognizedLatex;
 
@@ -66,15 +68,16 @@ CREATE TRIGGER IF NOT EXISTS strokes_no_delete BEFORE DELETE ON strokes
 
     private void Migrate()
     {
-        var hasCol = false;
+        var cols = new HashSet<string>();
         using (var c = _db.CreateCommand())
         {
             c.CommandText = "PRAGMA table_info(formulas)";
             using var r = c.ExecuteReader();
-            while (r.Read())
-                if (r.GetString(1) == "recognized_ids") hasCol = true;
+            while (r.Read()) cols.Add(r.GetString(1));
         }
-        if (!hasCol) Exec("ALTER TABLE formulas ADD COLUMN recognized_ids TEXT");
+        if (!cols.Contains("recognized_ids")) Exec("ALTER TABLE formulas ADD COLUMN recognized_ids TEXT");
+        if (!cols.Contains("kind")) Exec("ALTER TABLE formulas ADD COLUMN kind TEXT NOT NULL DEFAULT 'formula'");
+        if (!cols.Contains("align")) Exec("ALTER TABLE formulas ADD COLUMN align TEXT");
     }
 
     private long Exec(string sql, params (string, object?)[] args)
@@ -162,10 +165,12 @@ CREATE TRIGGER IF NOT EXISTS strokes_no_delete BEFORE DELETE ON strokes
         r.IsDBNull(4) ? null : ParseIds(r.GetString(4)),
         r.IsDBNull(5)
             ? new List<string>()
-            : JsonNode.Parse(r.GetString(5))!.AsArray().Select(a => a!["latex"]!.GetValue<string>()).ToList());
+            : JsonNode.Parse(r.GetString(5))!.AsArray().Select(a => a!["latex"]!.GetValue<string>()).ToList(),
+        r.GetString(6),
+        r.IsDBNull(7) ? null : r.GetString(7));
 
     private const string FormulaColumns =
-        "SELECT id, stroke_ids, recognized_latex, edited_latex, recognized_ids, alternatives FROM formulas";
+        "SELECT id, stroke_ids, recognized_latex, edited_latex, recognized_ids, alternatives, kind, align FROM formulas";
 
     public List<FormulaRecord> Formulas(long pageId)
     {
@@ -192,7 +197,7 @@ CREATE TRIGGER IF NOT EXISTS strokes_no_delete BEFORE DELETE ON strokes
     /// Eine Formel behaelt Id und Nutzerkorrektur, wenn Striche hinzukommen. Formeln ohne Gruppe bleiben
     /// unveraendert in der Datenbank, werden aber nicht zurueckgegeben. Ergebnis in Reihenfolge der Gruppen.
     /// </summary>
-    public List<FormulaRecord> SyncFormulas(long pageId, IReadOnlyList<IReadOnlyList<long>> groups)
+    public List<FormulaRecord> SyncFormulas(long pageId, IReadOnlyList<IReadOnlyList<long>> groups, string defaultKind = "formula")
     {
         var gs = groups.Select(g => g.Distinct().OrderBy(x => x).ToList()).ToList();
         var existing = Formulas(pageId);
@@ -230,7 +235,7 @@ CREATE TRIGGER IF NOT EXISTS strokes_no_delete BEFORE DELETE ON strokes
                 }
                 else
                 {
-                    Exec("INSERT INTO formulas(page_id,stroke_ids) VALUES($p,$s)", ("$p", pageId), ("$s", json));
+                    Exec("INSERT INTO formulas(page_id,stroke_ids,kind) VALUES($p,$s,$k)", ("$p", pageId), ("$s", json), ("$k", defaultKind));
                     fid = Scalar<long>("SELECT last_insert_rowid()");
                 }
                 ids.Add(fid);
@@ -258,6 +263,31 @@ CREATE TRIGGER IF NOT EXISTS strokes_no_delete BEFORE DELETE ON strokes
         Exec("INSERT INTO formula_versions(formula_id,latex,source) VALUES($f,$l,$src)",
              ("$f", formulaId), ("$l", best.Latex), ("$src", "recognizer:" + r.Engine));
         tx.Commit();
+    }
+
+    /// <summary>
+    /// Wechselt den Typ eines Blocks (formula/text). Inhalt und Erkennung gehoeren zum alten Typ und werden
+    /// geleert, damit neu erkannt wird; der bisherige Inhalt bleibt im Versionsverlauf erhalten.
+    /// </summary>
+    public void SetKind(long formulaId, string kind)
+    {
+        if (kind is not ("formula" or "text")) throw new ArgumentException("Typ muss formula oder text sein");
+        var cur = GetFormula(formulaId) ?? throw new KeyNotFoundException($"Formel {formulaId}");
+        if (cur.Kind == kind) return;
+        using var tx = _db.BeginTransaction();
+        Exec("UPDATE formulas SET kind=$k, recognized_latex=NULL, edited_latex=NULL, confidence=NULL, alternatives='[]', engine=NULL, recognized_ids=NULL WHERE id=$f",
+             ("$k", kind), ("$f", formulaId));
+        Exec("INSERT INTO formula_versions(formula_id,latex,source) VALUES($f,NULL,$s)", ("$f", formulaId), ("$s", "kind:" + kind));
+        tx.Commit();
+    }
+
+    /// <summary>align: null = automatisch (aus der Schreibposition), sonst left/center/right.</summary>
+    public void SetAlign(long formulaId, string? align)
+    {
+        if (align is not (null or "left" or "center" or "right")) throw new ArgumentException("Ausrichtung ungueltig");
+        if (Scalar<long?>("SELECT id FROM formulas WHERE id=$f", ("$f", formulaId)) is null)
+            throw new KeyNotFoundException($"Formel {formulaId}");
+        Exec("UPDATE formulas SET align=$a WHERE id=$f", ("$a", align), ("$f", formulaId));
     }
 
     /// <summary>Nutzerkorrektur einer bestimmten Formel; Verlauf bleibt erhalten.</summary>

@@ -60,6 +60,10 @@ class Store:
         cols = {r[1] for r in self.db.execute("PRAGMA table_info(formulas)")}
         if "recognized_ids" not in cols:   # Striche, mit denen zuletzt erkannt wurde (JSON)
             self.db.execute("ALTER TABLE formulas ADD COLUMN recognized_ids TEXT")
+        if "kind" not in cols:             # 'formula' oder 'text' (bei 'text' enthalten die LaTeX-Spalten normalen Text)
+            self.db.execute("ALTER TABLE formulas ADD COLUMN kind TEXT NOT NULL DEFAULT 'formula'")
+        if "align" not in cols:            # NULL = automatisch aus der Schreibposition, sonst left/center/right
+            self.db.execute("ALTER TABLE formulas ADD COLUMN align TEXT")
 
     def close(self) -> None:
         self.db.close()
