@@ -99,8 +99,9 @@ public class LectureTests
         s.EditFormula(recs[3].Id, "x^2");
         var groups = new List<StrokeGroup>
         {
-            new(new long[] { 1 }, Box(10, 100), 0), new(new long[] { 2 }, Box(160, 220), 0),
-            new(new long[] { 3 }, Box(260, 400), 0), new(new long[] { 4 }, Box(450, 520), 0),
+            // Seitenbreite 900: Mitten bei 55, 150 und 235 liegen im linken Drittel (alle links), 485 liegt in der Mitte
+            new(new long[] { 1 }, Box(10, 100), 0), new(new long[] { 2 }, Box(120, 180), 0),
+            new(new long[] { 3 }, Box(190, 280), 0), new(new long[] { 4 }, Box(450, 520), 0),
         };
         var rows = JsonNode.Parse(LectureBuilder.Build(groups, s.Formulas(page), 900, 1))!["rows"]!.AsArray();
         var blocks = rows[0]!["blocks"]!.AsArray();
